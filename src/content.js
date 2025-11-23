@@ -3,7 +3,6 @@
   window.__tr_json2zwo_initialized = true;
 
   const BASE_TRAINERROAD = "https://www.trainerroad.com";
-  // Allow IDs followed by / or end of path (handles ?query correctly)
   const TRAINERROAD_WORKOUT_REGEX =
     /\/app\/cycling\/workouts\/add\/(\d+)(?:\/|$)/;
   const TRAINERDAY_WORKOUT_REGEX = /^\/workouts\/([^/?#]+)/;
@@ -16,10 +15,12 @@
     return new Promise((resolve) => {
       try {
         if (!chrome || !chrome.storage || !chrome.storage.sync) {
+          console.info("[ZWO Downloader] chrome.storage not available, using default FTP");
           resolve(DEFAULT_FTP);
           return;
         }
       } catch {
+        console.info("[ZWO Downloader] chrome.storage access failed, using default FTP");
         resolve(DEFAULT_FTP);
         return;
       }
@@ -27,6 +28,7 @@
       chrome.storage.sync.get({ftp: DEFAULT_FTP}, (data) => {
         const v = Number(data.ftp);
         if (!Number.isFinite(v) || v <= 0) {
+          console.info("[ZWO Downloader] Invalid FTP in storage, using default FTP");
           resolve(DEFAULT_FTP);
         } else {
           resolve(v);
@@ -313,8 +315,10 @@
           }
 
           if (repeat >= 2) {
-            let onBlock = firstA;
-            let offBlock = firstB;
+            // By design: the first block is the "on" interval,
+            // and the second is the "off" / recovery, even if "on" has lower power.
+            const onBlock = firstA;
+            const offBlock = firstB;
 
             const onDur = Math.round(onBlock.duration);
             const offDur = Math.round(offBlock.duration);
@@ -538,15 +542,15 @@
     };
   }
 
-  // Category heuristic based on segment intensities (WhatsOnZwift)
+  // Improved category heuristic based on "work" time rather than total time.
   // rawSegments: array of [durationMinutes, startPct, endPct?]
-  // Returns one of: "Recovery", "Base", "SweetSpot", "Threshold", "VO2Max", "HIIT", "Uncategorized"
+  // Returns one of: "Recovery", "Base", "SweetSpot", "Threshold",
+  // "VO2Max", "HIIT", "Uncategorized"
   function inferCategoryFromSegments(rawSegments) {
     if (!Array.isArray(rawSegments) || rawSegments.length === 0) {
       return "Uncategorized";
     }
 
-    // Time (seconds) in each canonical zone (by %FTP)
     const zoneTime = {
       recovery: 0,   // < 55%
       base: 0,       // 55–75%
@@ -558,7 +562,7 @@
     };
 
     let totalSec = 0;
-    let workSec = 0; // time at/above ~tempo (>= 75%)
+    let workSec = 0; // time at/above ~tempo (>= 75% FTP)
 
     for (const seg of rawSegments) {
       if (!Array.isArray(seg) || seg.length < 2) continue;
@@ -580,7 +584,6 @@
       const avgPct = (startPct + endPct) / 2;
       totalSec += durSec;
 
-      // Assign to zone by average %FTP
       let zoneKey;
       if (avgPct < 55) zoneKey = "recovery";
       else if (avgPct < 76) zoneKey = "base";         // 55–75
@@ -592,7 +595,7 @@
 
       zoneTime[zoneKey] += durSec;
 
-      // "Work" time is anything ≥ ~tempo (≥ 75% FTP)
+      // "Work" time is anything ≥ ~tempo (>= 75% FTP)
       if (avgPct >= 75) {
         workSec += durSec;
       }
@@ -606,15 +609,15 @@
     const ssSec = z.sweetSpot;
     const tempoSec = z.tempo;
 
-    // If almost no time spent working above ~75% FTP,
-    // treat it as Recovery or Base regardless of short spikes.
     const workFrac = workSec / totalSec;
+
+    // If almost no time spent working above ~75% FTP,
+    // treat as Recovery or Base regardless of short spikes.
     if (workFrac < 0.15) {
       if (z.recovery / totalSec >= 0.7) return "Recovery";
       return "Base";
     }
 
-    // For categorisation, only look at the distribution of WORK time
     const safeDiv = workSec || 1;
     const fracWork = {
       hi: hiSec / safeDiv,                               // VO2 + anaerobic
@@ -626,7 +629,6 @@
     // 1) High-intensity dominated workouts → HIIT / VO2Max
     if (fracWork.hi >= 0.25) {
       const anaerFrac = z.anaerobic / safeDiv;
-      // If a decent chunk is really >120% FTP, call it HIIT
       if (anaerFrac >= 0.15) {
         return "HIIT";
       }
@@ -634,26 +636,23 @@
     }
 
     // 2) Threshold-centric hard workouts
-    if (fracWork.thr + fracWork.hi >= 0.40) {
+    if (fracWork.thr + fracWork.hi >= 0.4) {
       return "Threshold";
     }
 
-    // 3) SweetSpot-centric (including some threshold/tempo)
-    if (fracWork.ss + fracWork.thr >= 0.40 || fracWork.ss >= 0.30) {
+    // 3) SweetSpot-centric
+    if (fracWork.ss + fracWork.thr >= 0.4 || fracWork.ss >= 0.3) {
       return "SweetSpot";
     }
 
-    // 4) Tempo-heavy but not much actual threshold/VO2
-    // (map "tempo" to something more specific than Base; SweetSpot is closest)
-    if (fracWork.tempo >= 0.50) {
+    // 4) Tempo-heavy → still closer to "SweetSpot" / sub-threshold work
+    if (fracWork.tempo >= 0.5) {
       return "SweetSpot";
     }
 
-    // 5) Everything else that still has some work above 75% → Base
+    // 5) Everything else with some work → Base
     return "Base";
   }
-
-
 
   // WhatsOnZwift DOM extraction helpers
 
@@ -679,7 +678,7 @@
   function extractWozSegmentsFromDom() {
     const container = document.querySelector("div.order-2");
     if (!container) {
-      console.error("[TR2ZWO][WhatsOnZwift] order-2 container not found.");
+      console.warn("[ZWO Downloader][WhatsOnZwift] order-2 container not found.");
       return [];
     }
     const bars = Array.from(container.querySelectorAll(".textbar"));
@@ -752,6 +751,12 @@
       category,
       url
     };
+  }
+
+  function cdataWrap(str) {
+    if (!str) return "<![CDATA[]]>";
+    const safe = String(str).replace("]]>", "]]&gt;");
+    return `<![CDATA[${safe}]]>`;
   }
 
   // ---------- ZWO XML builder ----------
@@ -844,13 +849,24 @@ ${blocksXml}
     URL.revokeObjectURL(url);
   }
 
-  // ---------- Site-specific generators ----------
+  function showFailureAlert() {
+    try {
+      alert(
+        "ZWO Downloader: Failed to generate a workout for this page.\n\n" +
+        "Make sure you are on a supported workout page (TrainerRoad, TrainerDay, or WhatsOnZwift) and try again."
+      );
+    } catch {
+      // ignore alert issues
+    }
+  }
+
+  // ---------- Site-specific generators (return true/false for success) ----------
 
   async function generateTrainerRoadZwo(shouldDownload) {
     const match = window.location.pathname.match(TRAINERROAD_WORKOUT_REGEX);
     if (!match) {
-      console.error("[TR2ZWO] [TrainerRoad] Not on a workout add page.");
-      return;
+      console.info("[ZWO Downloader][TrainerRoad] Not on a workout add page.");
+      return false;
     }
     const workoutId = match[1];
 
@@ -860,10 +876,10 @@ ${blocksXml}
       const chartUrl = `${BASE_TRAINERROAD}/app/api/workouts/${workoutId}/chart-data`;
       const summaryUrl = `${BASE_TRAINERROAD}/app/api/workouts/${workoutId}/summary?withDifficultyRating=true`;
 
-      console.log("[TR2ZWO] [TrainerRoad] Fetching chart data:", chartUrl);
+      console.info("[ZWO Downloader][TrainerRoad] Fetching chart data:", chartUrl);
       const chartData = await fetchTrainerRoadJson(chartUrl);
 
-      console.log("[TR2ZWO] [TrainerRoad] Fetching metadata:", summaryUrl);
+      console.info("[ZWO Downloader][TrainerRoad] Fetching metadata:", summaryUrl);
       const metaResp = await fetchTrainerRoadJson(summaryUrl);
       const summary = metaResp.summary || metaResp;
 
@@ -878,11 +894,11 @@ ${blocksXml}
       }
 
       if (!Array.isArray(courseData) || courseData.length === 0) {
-        console.error(
-          "[TR2ZWO] [TrainerRoad] No CourseData array found in chart response.",
+        console.warn(
+          "[ZWO Downloader][TrainerRoad] No CourseData array found in chart response.",
           chartData
         );
-        return;
+        return false;
       }
 
       const samples = buildSamples(courseData);
@@ -896,15 +912,18 @@ ${blocksXml}
       const safeBase = baseName.replace(/[^\w\-]+/g, "_");
       const filename = `${safeBase}.zwo`;
 
-      console.log("===== TrainerRoad → ZWO XML =====");
-      console.log(zwoXml);
-      console.log("===== End ZWO XML =====");
+      console.info("===== TrainerRoad → ZWO XML =====");
+      console.info(zwoXml);
+      console.info("===== End ZWO XML =====");
 
       if (shouldDownload) {
         downloadZwo(zwoXml, filename);
       }
+
+      return true;
     } catch (err) {
-      console.error("[TR2ZWO] [TrainerRoad] Error building ZWO:", err);
+      console.warn("[ZWO Downloader][TrainerRoad] Error building ZWO:", err);
+      return false;
     }
   }
 
@@ -912,26 +931,26 @@ ${blocksXml}
     const path = window.location.pathname;
     const match = path.match(TRAINERDAY_WORKOUT_REGEX);
     if (!match) {
-      console.error("[TR2ZWO] [TrainerDay] Not on a workout page.");
-      return;
+      console.info("[ZWO Downloader][TrainerDay] Not on a workout page.");
+      return false;
     }
     const slug = match[1];
 
     try {
       const ftp = await getFtp();
       const url = window.location.href;
-      console.log("[TR2ZWO] [TrainerDay] Fetching workout by slug:", slug);
+      console.info("[ZWO Downloader][TrainerDay] Fetching workout by slug:", slug);
       const details = await fetchTrainerDayWorkoutBySlug(slug);
 
       const segments =
         Array.isArray(details.segments) ? details.segments : null;
 
       if (!segments || segments.length === 0) {
-        console.error(
-          "[TR2ZWO] [TrainerDay] No segments in workout data:",
+        console.warn(
+          "[ZWO Downloader][TrainerDay] No segments in workout data:",
           details
         );
-        return;
+        return false;
       }
 
       const blocks = buildBlocksFromSegments(segments);
@@ -944,23 +963,26 @@ ${blocksXml}
       const safeBase = baseName.replace(/[^\w\-]+/g, "_");
       const filename = `${safeBase}.zwo`;
 
-      console.log("===== TrainerDay → ZWO XML =====");
-      console.log(zwoXml);
-      console.log("===== End ZWO XML =====");
+      console.info("===== TrainerDay → ZWO XML =====");
+      console.info(zwoXml);
+      console.info("===== End ZWO XML =====");
 
       if (shouldDownload) {
         downloadZwo(zwoXml, filename);
       }
+
+      return true;
     } catch (err) {
-      console.error("[TR2ZWO] [TrainerDay] Error building ZWO:", err);
+      console.warn("[ZWO Downloader][TrainerDay] Error building ZWO:", err);
+      return false;
     }
   }
 
   async function generateWhatsonZwiftZwo(shouldDownload) {
     const path = window.location.pathname;
     if (!WHATSONZWIFT_WORKOUT_REGEX.test(path)) {
-      console.error("[TR2ZWO] [WhatsOnZwift] Not on a workout page.");
-      return;
+      console.info("[ZWO Downloader][WhatsOnZwift] Not on a workout page.");
+      return false;
     }
 
     try {
@@ -969,10 +991,10 @@ ${blocksXml}
 
       const wozSegments = extractWozSegmentsFromDom();
       if (!wozSegments || wozSegments.length === 0) {
-        console.error(
-          "[TR2ZWO] [WhatsOnZwift] No segments extracted from DOM."
+        console.warn(
+          "[ZWO Downloader][WhatsOnZwift] No segments extracted from DOM."
         );
-        return;
+        return false;
       }
 
       // For category heuristic we only need minutes + %FTP
@@ -1045,36 +1067,43 @@ ${blocksXml}
       const safeBase = baseName.replace(/[^\w\-]+/g, "_");
       const filename = `${safeBase}.zwo`;
 
-      console.log("===== WhatsOnZwift → ZWO XML =====");
-      console.log(zwoXml);
-      console.log("===== End ZWO XML =====");
+      console.info("===== WhatsOnZwift → ZWO XML =====");
+      console.info(zwoXml);
+      console.info("===== End ZWO XML =====");
 
       if (shouldDownload) {
         downloadZwo(zwoXml, filename);
       }
+
+      return true;
     } catch (err) {
-      console.error("[TR2ZWO] [WhatsOnZwift] Error building ZWO:", err);
+      console.warn("[ZWO Downloader][WhatsOnZwift] Error building ZWO:", err);
+      return false;
     }
   }
 
   // ---------- Main dispatcher ----------
 
-  function generateZwoForCurrentPage(shouldDownload) {
+  async function generateZwoForCurrentPage(shouldDownload) {
     const site = getSiteType();
     if (site === "trainerroad") {
-      generateTrainerRoadZwo(shouldDownload);
+      return await generateTrainerRoadZwo(shouldDownload);
     } else if (site === "trainerday") {
-      generateTrainerDayZwo(shouldDownload);
+      return await generateTrainerDayZwo(shouldDownload);
     } else if (site === "whatsonzwift") {
-      generateWhatsonZwiftZwo(shouldDownload);
+      return await generateWhatsonZwiftZwo(shouldDownload);
     } else {
-      console.error("[TR2ZWO] Unsupported site:", location.host);
+      console.info("[ZWO Downloader] Unsupported site:", location.host);
+      return false;
     }
   }
 
   // Expose a manual trigger for downloading from DevTools:
-  window.tr2zwoDownload = function () {
-    generateZwoForCurrentPage(true);
+  window.tr2zwoDownload = async function () {
+    const ok = await generateZwoForCurrentPage(true);
+    if (!ok) {
+      showFailureAlert();
+    }
   };
 
   // Listen for messages from background.js (toolbar icon click)
@@ -1085,7 +1114,12 @@ ${blocksXml}
   ) {
     chrome.runtime.onMessage.addListener((msg, _sender, _sendResponse) => {
       if (msg && msg.type === "TR2ZWO_DOWNLOAD") {
-        generateZwoForCurrentPage(true);
+        (async () => {
+          const ok = await generateZwoForCurrentPage(true);
+          if (!ok) {
+            showFailureAlert();
+          }
+        })();
       }
     });
   }
