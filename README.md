@@ -1,7 +1,9 @@
 # ZWO Downloader
 
 **ZWO Downloader** is a Chrome extension that converts cycling workouts from **TrainerRoad**, **TrainerDay**, and **WhatsOnZwift** into Zwift `.zwo` workout files.
-It detects supported workout pages, extracts or retrieves the underlying power-segment structure, reconstructs the workout with proper intervals and ramps, and provides a one-click ZWO download.
+It detects supported workout pages, extracts or fetches segment data, reconstructs the workout structure (including ramps and structured intervals), computes workout metrics, and provides a one-click ZWO download.
+
+---
 
 ## Supported Websites
 
@@ -16,26 +18,32 @@ The extension automatically activates on:
 * **WhatsOnZwift**
   `https://whatsonzwift.com/workouts/...`
 
+---
+
 ## Features
 
-* Extracts workout structure directly from each site's data source:
+* Extracts interval structure from:
 
-  * TrainerRoad: `chart-data` (1-second samples) + `summary`
+  * TrainerRoad: `chart-data` (1-second samples)
   * TrainerDay: API lookup via `bySlug`
-  * WhatsOnZwift: DOM parsing of segment and metadata blocks
-* Generates Zwift-compatible `.zwo` files using:
+  * WhatsOnZwift: DOM parsing of interval blocks and cadence
+* Generates fully Zwift-compatible `.zwo` files using:
 
   * **SteadyState**
   * **Warmup** / **Cooldown**
-  * **IntervalsT** (automatically detected from repeating interval pairs)
-* Handles:
+  * **IntervalsT** (auto-detected)
+* Includes cadence when present (WhatsOnZwift)
+* Computes workout metrics using your configured FTP:
 
-  * Accurate ramp detection
-  * 1-second transition smoothing
-  * Category inference (for WhatsOnZwift)
-  * TSS, kJ, duration, IF, and source tags
-* One-click download via the Chrome toolbar button
-* Outputs the full generated XML to the DevTools console for inspection
+  * **TSS**
+  * **kJ**
+  * **IF**
+  * **Total duration**
+* Adds metrics and source tags into the ZWO file
+* Prints generated XML to the browser console for inspection
+* One-click download via the extension toolbar icon
+
+---
 
 ## Installation (Unpacked)
 
@@ -52,11 +60,29 @@ The extension automatically activates on:
 
 4. Click **Load unpacked** and select the `src/` directory.
 
+---
+
 ## Usage
 
-Navigate to a supported workout page on TrainerRoad, TrainerDay, or WhatsOnZwift.
-Click the **ZWO Downloader** toolbar icon to download the corresponding `.zwo` file.
-The extension also logs the generated XML to the browser console for debugging or verification.
+1. Open a supported workout page (TrainerRoad, TrainerDay, or WhatsOnZwift).
+2. Click the **ZWO Downloader** toolbar button.
+3. The `.zwo` file downloads immediately.
+4. The XML is also logged to the DevTools console.
+
+---
+
+## FTP Configuration
+
+ZWO workouts always use **relative (%FTP)** values, as required by Zwift.
+Your FTP setting is used **only to calculate the kJ metric** included in the exported ZWO file.
+
+To set your FTP:
+
+* Right-click the extension → **Options**
+
+Your FTP is stored in Chrome sync storage and applies to all generated workouts.
+
+---
 
 ## License
 
