@@ -2,91 +2,47 @@
   if (window.__tr_json2zwo_initialized) return;
   window.__tr_json2zwo_initialized = true;
 
-  const BASE_URL = "https://www.trainerroad.com";
-  const WORKOUT_REGEX = /\/app\/cycling\/workouts\/add\/(\d+)/;
-  let lastProcessedWorkoutId = null;
+  const BASE_TRAINERROAD = "https://www.trainerroad.com";
+  const TRAINERROAD_WORKOUT_REGEX = /\/app\/cycling\/workouts\/add\/(\d+)/;
+  const TRAINERDAY_WORKOUT_REGEX = /^\/workouts\/([^/?#]+)/;
 
-  // ---------- Messaging: handle icon click ----------
+  // ---------- Helper: identify site ----------
 
-  if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
-    chrome.runtime.onMessage.addListener((msg, _sender, _sendResponse) => {
-      if (msg && msg.type === "TR2ZWO_DOWNLOAD") {
-        generateZwoForCurrentPage(true); // true = trigger download
-      }
-    });
+  function getSiteType() {
+    const host = location.host || "";
+    if (host.includes("trainerroad.com")) return "trainerroad";
+    if (host.includes("trainerday.com")) return "trainerday";
+    return null;
   }
 
-  // ---------- Fetch helper with required header ----------
+  // ---------- Fetch helpers ----------
 
-  async function fetchJson(url) {
-    const res = await fetch(url, {
-      credentials: "include",
-      headers: {
-        "trainerroad-jsonformat": "camel-case"
-      }
-    });
-
+  async function fetchJson(url, options = {}) {
+    const res = await fetch(url, options);
     if (!res.ok) {
       throw new Error(`HTTP ${res.status} for ${url}`);
     }
     return res.json();
   }
 
-  // ---------- URL / SPA watcher using History API ----------
-
-  function getWorkoutIdFromLocation() {
-    const m = window.location.pathname.match(WORKOUT_REGEX);
-    return m ? m[1] : null;
+  async function fetchTrainerRoadJson(url) {
+    return fetchJson(url, {
+      credentials: "include",
+      headers: {
+        "trainerroad-jsonformat": "camel-case"
+      }
+    });
   }
 
-  function onUrlChange() {
-    const workoutId = getWorkoutIdFromLocation();
-    if (!workoutId) return;
-
-    if (workoutId === lastProcessedWorkoutId) {
-      return;
-    }
-
-    lastProcessedWorkoutId = workoutId;
-    console.log("[TR2ZWO] Detected TrainerRoad workout ID:", workoutId);
-    generateZwoForCurrentPage(false); // false = just log, no auto-download
+  async function fetchTrainerDayWorkoutBySlug(slug) {
+    const url = `https://app.api.trainerday.com/api/workouts/bySlug/${encodeURIComponent(
+      slug
+    )}`;
+    // Public API – no credentials required
+    return fetchJson(url, {credentials: "omit"});
   }
 
-  function installSpaUrlListener() {
-    if (window.__tr_json2zwo_url_listener_installed) return;
-    window.__tr_json2zwo_url_listener_installed = true;
-
-    let lastHref = location.href;
-
-    const handleIfChanged = () => {
-      const current = location.href;
-      if (current === lastHref) return;
-      lastHref = current;
-      onUrlChange();
-    };
-
-    const origPushState = history.pushState;
-    history.pushState = function (...args) {
-      const ret = origPushState.apply(this, args);
-      handleIfChanged();
-      return ret;
-    };
-
-    const origReplaceState = history.replaceState;
-    history.replaceState = function (...args) {
-      const ret = origReplaceState.apply(this, args);
-      handleIfChanged();
-      return ret;
-    };
-
-    window.addEventListener("popstate", handleIfChanged);
-    setInterval(handleIfChanged, 1500);
-  }
-
-  installSpaUrlListener();
-  onUrlChange();
-
-  // ---------- Helpers to read chart-data points ----------
+  // ---------- TrainerRoad helpers: CourseData -> samples ----------
 
   function getSeconds(pt) {
     if (typeof pt.Seconds === "number") return pt.Seconds;
@@ -103,15 +59,13 @@
     return 0;
   }
 
-  // ---------- Ramp & intervals helpers ----------
-
   function buildSamples(courseData) {
     const sorted = [...courseData].sort(
       (a, b) => getSeconds(a) - getSeconds(b)
     );
     const samples = [];
     for (const pt of sorted) {
-      const t = getSeconds(pt) / 1000;
+      const t = getSeconds(pt) / 1000; // ms -> s
       const p = getFtpPercent(pt) / 100;
       if (!Number.isFinite(t)) continue;
 
@@ -127,17 +81,9 @@
     return samples;
   }
 
-  function buildBlocks(samples) {
-    /**
-     * kind: 'steady' | 'rampUp' | 'rampDown'
-     * steady:  { kind, duration, power }
-     * rampUp:  { kind, duration, powerLow, powerHigh }
-     * rampDown:{ kind, duration, powerLow, powerHigh }
-     *
-     * Any ramp with duration <= 1s is treated as an instantaneous step:
-     * - no separate block
-     * - its time is added to the next block.
-     */
+  // ---------- Generic blocks (used by both sites) ----------
+
+  function buildBlocksFromSamples(samples) {
     if (!samples || samples.length < 2) return [];
 
     const blocks = [];
@@ -225,6 +171,58 @@
     return blocks;
   }
 
+  // TrainerDay: segments -> blocks
+  function buildBlocksFromSegments(segments) {
+    const blocks = [];
+    if (!Array.isArray(segments)) return blocks;
+
+    for (const seg of segments) {
+      if (!Array.isArray(seg) || seg.length < 2) continue;
+      const minutes = Number(seg[0]);
+      const startPct = Number(seg[1]);
+      const endPct =
+        seg.length > 2 && seg[2] != null ? Number(seg[2]) : startPct;
+
+      if (
+        !Number.isFinite(minutes) ||
+        !Number.isFinite(startPct) ||
+        !Number.isFinite(endPct)
+      ) {
+        continue;
+      }
+
+      const duration = minutes * 60;
+      const pStart = startPct / 100;
+      const pEnd = endPct / 100;
+
+      if (duration <= 0) continue;
+
+      if (Math.abs(pStart - pEnd) < 1e-6) {
+        blocks.push({
+          kind: "steady",
+          duration,
+          power: pStart
+        });
+      } else if (pEnd > pStart) {
+        blocks.push({
+          kind: "rampUp",
+          duration,
+          powerLow: pStart,
+          powerHigh: pEnd
+        });
+      } else {
+        blocks.push({
+          kind: "rampDown",
+          duration,
+          powerLow: pStart,
+          powerHigh: pEnd
+        });
+      }
+    }
+
+    return blocks;
+  }
+
   function almostEqual(a, b, tol) {
     return Math.abs(a - b) <= tol;
   }
@@ -304,7 +302,6 @@
                 }
               };
             } else if (on1.kind === "rampDown") {
-              // ramp-down inside IntervalsT: start high -> end low
               xmlBlock = {
                 type: "IntervalsT",
                 attrs: {
@@ -348,8 +345,8 @@
           type: "Cooldown",
           attrs: {
             Duration: String(Math.round(b.duration)),
-            PowerLow: b.powerLow.toFixed(3),   // start (higher)
-            PowerHigh: b.powerHigh.toFixed(3)  // end (lower)
+            PowerLow: b.powerLow.toFixed(3),
+            PowerHigh: b.powerHigh.toFixed(3)
           }
         });
       }
@@ -359,7 +356,7 @@
     return xmlBlocks;
   }
 
-  // ---------- ZWO generation ----------
+  // ---------- Metadata / ZWO generation ----------
 
   function cdataWrap(str) {
     if (!str) return "<![CDATA[]]>";
@@ -367,42 +364,28 @@
     return `<![CDATA[${safe}]]>`;
   }
 
-  function buildCategory(summary) {
+  function buildMetaFromTrainerRoad(summary, url) {
+    const s = summary || {};
     let category = "Uncategorized";
 
     if (
-      summary &&
-      summary.progression &&
-      summary.progression.text &&
-      typeof summary.progressionLevel === "number"
+      s.progression &&
+      s.progression.text &&
+      typeof s.progressionLevel === "number"
     ) {
-      category = `${summary.progression.text} ${summary.progressionLevel.toFixed(
-        2
-      )}`;
-    } else if (summary && summary.progression && summary.progression.text) {
-      category = summary.progression.text;
+      category = `${s.progression.text} ${s.progressionLevel.toFixed(2)}`;
+    } else if (s.progression && s.progression.text) {
+      category = s.progression.text;
     }
 
-    return category;
-  }
-
-  function toZwoXml(courseData, summary) {
-    const samples = buildSamples(courseData);
-    const blocks = buildBlocks(samples);
-    const xmlBlocks = compressToXmlBlocks(blocks);
-
-    const category = buildCategory(summary);
-
     const name =
-      (summary && summary.workoutName) ||
-      `TrainerRoad Workout ${summary && summary.id}`;
+      s.workoutName ||
+      (s.id != null ? `TrainerRoad Workout ${s.id}` : "TrainerRoad Workout");
 
-    const tss = summary && typeof summary.tss === "number" ? summary.tss : null;
-    const kj = summary && typeof summary.kj === "number" ? summary.kj : null;
+    const tss = typeof s.tss === "number" ? s.tss : null;
+    const kj = typeof s.kj === "number" ? s.kj : null;
     const intensityFactorRaw =
-      summary && typeof summary.intensityFactor === "number"
-        ? summary.intensityFactor
-        : null;
+      typeof s.intensityFactor === "number" ? s.intensityFactor : null;
     const intensityFactor =
       intensityFactorRaw != null
         ? intensityFactorRaw > 1
@@ -411,27 +394,122 @@
         : null;
 
     let description =
-      (summary && summary.workoutDescription) ||
-      (summary && summary.goalDescription) ||
-      "Converted from TrainerRoad.";
+      s.workoutDescription || s.goalDescription || "Converted from TrainerRoad.";
+
+    return {
+      source: "TrainerRoad",
+      name,
+      description,
+      category,
+      tss,
+      kj,
+      ifValue: intensityFactor,
+      url
+    };
+  }
+
+  function computeKjFromTrainerDaySegments(segments, ftpWatts = 250) {
+    if (!Array.isArray(segments)) return null;
+    let totalKj = 0;
+
+    for (const seg of segments) {
+      if (!Array.isArray(seg) || seg.length < 2) continue;
+      const minutes = Number(seg[0]);
+      const startPct = Number(seg[1]);
+      const endPct =
+        seg.length > 2 && seg[2] != null ? Number(seg[2]) : startPct;
+      if (
+        !Number.isFinite(minutes) ||
+        !Number.isFinite(startPct) ||
+        !Number.isFinite(endPct)
+      ) {
+        continue;
+      }
+      const durSec = minutes * 60;
+      const avgPct = (startPct + endPct) / 2;
+      const watts = ftpWatts * (avgPct / 100);
+      const kJ = (watts * durSec) / 1000;
+      totalKj += kJ;
+    }
+
+    return Math.round(totalKj);
+  }
+
+  function buildMetaFromTrainerDay(details, url) {
+    const d = details || {};
+    const title =
+      d.title || document.title || "TrainerDay Workout";
+
+    const description = d.description || "";
+
+    const category = d.dominantZone || "Uncategorized";
+
+    const tss =
+      typeof d.bikeStress === "number" ? d.bikeStress : null;
+
+    const ifValue =
+      typeof d.intensity === "number" ? d.intensity : null;
+
+    const segments =
+      Array.isArray(d.segments) ? d.segments : null;
+
+    const kj = computeKjFromTrainerDaySegments(segments, 250);
+
+    return {
+      source: "TrainerDay",
+      name: title,
+      description: description || "Converted from TrainerDay.",
+      category,
+      tss,
+      kj,
+      ifValue,
+      url
+    };
+  }
+
+  function toZwoXmlFromBlocksAndMeta(blocks, meta) {
+    const xmlBlocks = compressToXmlBlocks(blocks);
+
+    const source = meta.source || "Unknown";
+    const name = meta.name || "Workout";
+    const category = meta.category || "Uncategorized";
+    let description = meta.description || "";
+
+    const tss = meta.tss;
+    const kj = meta.kj;
+    const ifValue = meta.ifValue;
+    const url = meta.url;
+
+    // Total workout duration from all blocks
+    const totalDurationSec = blocks.reduce(
+      (sum, b) => sum + (Number(b.duration) || 0),
+      0
+    );
+    const durationMinutes =
+      totalDurationSec > 0 ? Math.round(totalDurationSec / 60) : null;
 
     const metrics = [];
-    if (tss != null) metrics.push(`TSS: ${tss}`);
-    if (kj != null) metrics.push(`kJ: ${kj}`);
-    if (intensityFactor != null)
-      metrics.push(`IF: ${intensityFactor.toFixed(2)}`);
+    if (typeof tss === "number") metrics.push(`TSS: ${tss}`);
+    if (typeof kj === "number") metrics.push(`kJ: ${kj}`);
+    if (typeof ifValue === "number") metrics.push(`IF: ${ifValue.toFixed(2)}`);
+    if (durationMinutes != null)
+      metrics.push(`Duration: ${durationMinutes} min`);
 
     if (metrics.length > 0) {
-      description += `\n\nMetrics: ${metrics.join(", ")}`;
+      description +=
+        (description ? "\n\n" : "") + `Metrics: ${metrics.join(", ")}`;
     }
 
     const tags = [];
-    tags.push({name: "TrainerRoad"});
+    tags.push({name: source});
     tags.push({name: category});
-    if (tss != null) tags.push({name: `TSS ${tss}`});
-    if (kj != null) tags.push({name: `kJ ${kj}`});
-    if (intensityFactor != null)
-      tags.push({name: `IF ${intensityFactor.toFixed(2)}`});
+    if (typeof tss === "number") tags.push({name: `TSS ${tss}`});
+    if (typeof kj === "number") tags.push({name: `kJ ${kj}`});
+    if (typeof ifValue === "number")
+      tags.push({name: `IF ${ifValue.toFixed(2)}`});
+    if (durationMinutes != null)
+      tags.push({name: `Duration:${durationMinutes}min`});
+    if (url) tags.push({name: `URL:${url}`});
 
     const blocksXml = xmlBlocks
       .map((b) => {
@@ -442,13 +520,11 @@
       })
       .join("\n");
 
-    const tagsXml = tags
-      .map((t) => `  <tag name="${t.name}"/>`)
-      .join("\n");
+    const tagsXml = tags.map((t) => `  <tag name="${t.name}"/>`).join("\n");
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <workout_file>
-  <author>TrainerRoad json2zwo</author>
+  <author>${source} json2zwo</author>
   <name>${name}</name>
   <description>${cdataWrap(description)}</description>
   <category>${category}</category>
@@ -478,25 +554,25 @@ ${blocksXml}
     URL.revokeObjectURL(url);
   }
 
-  // ---------- Main generator ----------
+  // ---------- Site-specific generators ----------
 
-  async function generateZwoForCurrentPage(shouldDownload) {
-    const workoutIdMatch = window.location.pathname.match(WORKOUT_REGEX);
-    if (!workoutIdMatch) {
-      console.error("[TR2ZWO] Not on a TrainerRoad workout add page.");
+  async function generateTrainerRoadZwo(shouldDownload) {
+    const match = window.location.pathname.match(TRAINERROAD_WORKOUT_REGEX);
+    if (!match) {
+      console.error("[TR2ZWO] [TrainerRoad] Not on a workout add page.");
       return;
     }
-    const workoutId = workoutIdMatch[1];
+    const workoutId = match[1];
 
     try {
-      const chartUrl = `${BASE_URL}/app/api/workouts/${workoutId}/chart-data`;
-      const summaryUrl = `${BASE_URL}/app/api/workouts/${workoutId}/summary?withDifficultyRating=true`;
+      const chartUrl = `${BASE_TRAINERROAD}/app/api/workouts/${workoutId}/chart-data`;
+      const summaryUrl = `${BASE_TRAINERROAD}/app/api/workouts/${workoutId}/summary?withDifficultyRating=true`;
 
-      console.log("[TR2ZWO] Fetching chart data:", chartUrl);
-      const chartData = await fetchJson(chartUrl);
+      console.log("[TR2ZWO] [TrainerRoad] Fetching chart data:", chartUrl);
+      const chartData = await fetchTrainerRoadJson(chartUrl);
 
-      console.log("[TR2ZWO] Fetching metadata:", summaryUrl);
-      const metaResp = await fetchJson(summaryUrl);
+      console.log("[TR2ZWO] [TrainerRoad] Fetching metadata:", summaryUrl);
+      const metaResp = await fetchTrainerRoadJson(summaryUrl);
       const summary = metaResp.summary || metaResp;
 
       let courseData =
@@ -510,15 +586,21 @@ ${blocksXml}
       }
 
       if (!Array.isArray(courseData) || courseData.length === 0) {
-        console.error("[TR2ZWO] No CourseData array found in chart response.", chartData);
+        console.error(
+          "[TR2ZWO] [TrainerRoad] No CourseData array found in chart response.",
+          chartData
+        );
         return;
       }
 
-      const zwoXml = toZwoXml(courseData, summary);
-      const baseName =
-        (summary && summary.workoutName) || `TrainerRoad-${workoutId}`;
+      const samples = buildSamples(courseData);
+      const blocks = buildBlocksFromSamples(samples);
+      const meta = buildMetaFromTrainerRoad(summary, window.location.href);
+
+      const zwoXml = toZwoXmlFromBlocksAndMeta(blocks, meta);
+      const baseName = meta.name || "Workout";
       const safeBase = baseName.replace(/[^\w\-]+/g, "_");
-      const filename = `${safeBase}-${workoutId}.zwo`;
+      const filename = `${safeBase}.zwo`;
 
       console.log("===== TrainerRoad → ZWO XML =====");
       console.log(zwoXml);
@@ -528,8 +610,83 @@ ${blocksXml}
         downloadZwo(zwoXml, filename);
       }
     } catch (err) {
-      console.error("[TR2ZWO] Error building ZWO:", err);
+      console.error("[TR2ZWO] [TrainerRoad] Error building ZWO:", err);
     }
+  }
+
+  async function generateTrainerDayZwo(shouldDownload) {
+    const path = window.location.pathname;
+    const match = path.match(TRAINERDAY_WORKOUT_REGEX);
+    if (!match) {
+      console.error("[TR2ZWO] [TrainerDay] Not on a workout page.");
+      return;
+    }
+    const slug = match[1];
+
+    try {
+      const url = window.location.href;
+      console.log(
+        "[TR2ZWO] [TrainerDay] Fetching workout by slug:",
+        slug
+      );
+      const details = await fetchTrainerDayWorkoutBySlug(slug);
+
+      const segments =
+        Array.isArray(details.segments) ? details.segments : null;
+
+      if (!segments || segments.length === 0) {
+        console.error(
+          "[TR2ZWO] [TrainerDay] No segments in workout data:",
+          details
+        );
+        return;
+      }
+
+      const blocks = buildBlocksFromSegments(segments);
+      const meta = buildMetaFromTrainerDay(details, url);
+
+      const zwoXml = toZwoXmlFromBlocksAndMeta(blocks, meta);
+      const baseName = meta.name || "Workout";
+      const safeBase = baseName.replace(/[^\w\-]+/g, "_");
+      const filename = `${safeBase}.zwo`;
+
+      console.log("===== TrainerDay → ZWO XML =====");
+      console.log(zwoXml);
+      console.log("===== End ZWO XML =====");
+
+      if (shouldDownload) {
+        downloadZwo(zwoXml, filename);
+      }
+    } catch (err) {
+      console.error("[TR2ZWO] [TrainerDay] Error building ZWO:", err);
+    }
+  }
+
+  // ---------- Main dispatcher ----------
+
+  function generateZwoForCurrentPage(shouldDownload) {
+    const site = getSiteType();
+    if (site === "trainerroad") {
+      generateTrainerRoadZwo(shouldDownload);
+    } else if (site === "trainerday") {
+      generateTrainerDayZwo(shouldDownload);
+    } else {
+      console.error("[TR2ZWO] Unsupported site:", location.host);
+    }
+  }
+
+  // Expose a manual trigger for downloading from DevTools:
+  window.tr2zwoDownload = function () {
+    generateZwoForCurrentPage(true);
+  };
+
+  // Listen for messages from background.js (toolbar icon click)
+  if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((msg, _sender, _sendResponse) => {
+      if (msg && msg.type === "TR2ZWO_DOWNLOAD") {
+        generateZwoForCurrentPage(true);
+      }
+    });
   }
 })();
 

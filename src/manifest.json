@@ -29,6 +29,8 @@
     }
   ],
   "host_permissions": [
-    "https://www.trainerroad.com/*"
+    "https://www.trainerroad.com/*",
+    "https://app.trainerday.com/*",
+    "https://app.trainerday.com/*"
   ]
 }
