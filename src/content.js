@@ -5,6 +5,7 @@
   const BASE_TRAINERROAD = "https://www.trainerroad.com";
   const TRAINERROAD_WORKOUT_REGEX = /\/app\/cycling\/workouts\/add\/(\d+)/;
   const TRAINERDAY_WORKOUT_REGEX = /^\/workouts\/([^/?#]+)/;
+  const WHATSONZWIFT_WORKOUT_REGEX = /^\/workouts\/.+/;
 
   // ---------- Helper: identify site ----------
 
@@ -12,6 +13,7 @@
     const host = location.host || "";
     if (host.includes("trainerroad.com")) return "trainerroad";
     if (host.includes("trainerday.com")) return "trainerday";
+    if (host.includes("whatsonzwift.com")) return "whatsonzwift";
     return null;
   }
 
@@ -38,7 +40,6 @@
     const url = `https://app.api.trainerday.com/api/workouts/bySlug/${encodeURIComponent(
       slug
     )}`;
-    // Public API – no credentials required
     return fetchJson(url, {credentials: "omit"});
   }
 
@@ -81,7 +82,7 @@
     return samples;
   }
 
-  // ---------- Generic blocks (used by both sites) ----------
+  // ---------- Generic blocks (used by all sites) ----------
 
   function buildBlocksFromSamples(samples) {
     if (!samples || samples.length < 2) return [];
@@ -171,7 +172,8 @@
     return blocks;
   }
 
-  // TrainerDay: segments -> blocks
+  // Segments -> blocks (TrainerDay + WhatsOnZwift)
+
   function buildBlocksFromSegments(segments) {
     const blocks = [];
     if (!Array.isArray(segments)) return blocks;
@@ -356,7 +358,7 @@
     return xmlBlocks;
   }
 
-  // ---------- Metadata / ZWO generation ----------
+  // ---------- Metadata / metrics helpers ----------
 
   function cdataWrap(str) {
     if (!str) return "<![CDATA[]]>";
@@ -408,7 +410,8 @@
     };
   }
 
-  function computeKjFromTrainerDaySegments(segments, ftpWatts = 250) {
+  // Generic kJ from segments (TrainerDay + WhatsOnZwift)
+  function computeKjFromSegments(segments, ftpWatts = 250) {
     if (!Array.isArray(segments)) return null;
     let totalKj = 0;
 
@@ -453,12 +456,204 @@
     const segments =
       Array.isArray(d.segments) ? d.segments : null;
 
-    const kj = computeKjFromTrainerDaySegments(segments, 250);
+    const kj = computeKjFromSegments(segments, 250);
 
     return {
       source: "TrainerDay",
       name: title,
       description: description || "Converted from TrainerDay.",
+      category,
+      tss,
+      kj,
+      ifValue,
+      url
+    };
+  }
+
+  // IF from segments (used for WhatsOnZwift; same assumption FTP=1.0)
+  function computeIfFromSegments(segments) {
+    if (!Array.isArray(segments) || segments.length === 0) return null;
+    let totalSec = 0;
+    let sum = 0;
+    for (const seg of segments) {
+      if (!Array.isArray(seg) || seg.length < 2) continue;
+      const minutes = Number(seg[0]);
+      const startPct = Number(seg[1]);
+      const endPct =
+        seg.length > 2 && seg[2] != null ? Number(seg[2]) : startPct;
+      if (
+        !Number.isFinite(minutes) ||
+        !Number.isFinite(startPct) ||
+        !Number.isFinite(endPct)
+      ) {
+        continue;
+      }
+      const durSec = minutes * 60;
+      const avgFrac = ((startPct + endPct) / 2) / 100; // relative to FTP
+      totalSec += durSec;
+      sum += avgFrac * durSec;
+    }
+    if (totalSec === 0) return null;
+    return sum / totalSec;
+  }
+
+  // Category heuristic based on segment intensities (WhatsOnZwift)
+  function inferCategoryFromSegments(segments) {
+    if (!Array.isArray(segments) || segments.length === 0) {
+      return "Uncategorized";
+    }
+
+    const buckets = {
+      recovery: 0,   // < 55%
+      base: 0,       // 55–75%
+      tempo: 0,      // 75–88%
+      sweetSpot: 0,  // 88–95%
+      threshold: 0,  // 95–105%
+      vo2: 0,        // 105–120%
+      hiit: 0        // > 120%
+    };
+
+    for (const seg of segments) {
+      if (!Array.isArray(seg) || seg.length < 2) continue;
+      const minutes = Number(seg[0]);
+      const startPct = Number(seg[1]);
+      const endPct =
+        seg.length > 2 && seg[2] != null ? Number(seg[2]) : startPct;
+      if (
+        !Number.isFinite(minutes) ||
+        !Number.isFinite(startPct) ||
+        !Number.isFinite(endPct)
+      ) {
+        continue;
+      }
+      const durSec = minutes * 60;
+      const avgFrac = ((startPct + endPct) / 2) / 100; // 0–?
+      const x = avgFrac;
+
+      if (x < 0.55) buckets.recovery += durSec;
+      else if (x < 0.75) buckets.base += durSec;
+      else if (x < 0.88) buckets.tempo += durSec;
+      else if (x < 0.95) buckets.sweetSpot += durSec;
+      else if (x < 1.05) buckets.threshold += durSec;
+      else if (x < 1.2) buckets.vo2 += durSec;
+      else buckets.hiit += durSec;
+    }
+
+    let bestKey = null;
+    let bestVal = 0;
+    for (const [k, v] of Object.entries(buckets)) {
+      if (v > bestVal) {
+        bestVal = v;
+        bestKey = k;
+      }
+    }
+    if (!bestKey || bestVal === 0) return "Uncategorized";
+
+    switch (bestKey) {
+      case "recovery":
+        return "Recovery";
+      case "base":
+        return "Base";
+      case "tempo":
+        return "Tempo";
+      case "sweetSpot":
+        return "SweetSpot";
+      case "threshold":
+        return "Threshold";
+      case "vo2":
+        return "VO2Max";
+      case "hiit":
+        return "HIIT";
+      default:
+        return "Uncategorized";
+    }
+  }
+
+  // WhatsOnZwift DOM extraction helpers
+
+  function extractWozTitle() {
+    const el = document.querySelector("header.my-8 h1");
+    return el ? el.textContent.trim() : "WhatsOnZwift Workout";
+  }
+
+  function extractWozDescription() {
+    const ul = document.querySelector("ul.items-baseline");
+    if (!ul) return "";
+    let el = ul.previousElementSibling;
+    while (el) {
+      if (el.tagName && el.tagName.toLowerCase() === "p") {
+        return el.textContent.trim();
+      }
+      el = el.previousElementSibling;
+    }
+    return "";
+  }
+
+  function extractWozStressPoints() {
+    const ps = Array.from(document.querySelectorAll("p"));
+    for (const p of ps) {
+      const txt = p.textContent || "";
+      if (txt.includes("Stress points")) {
+        const m = txt.match(/Stress points\s*:?\s*(\d+)/i);
+        if (m) return Number(m[1]);
+      }
+    }
+    return null;
+  }
+
+  function extractWozSegmentsFromDom() {
+    const container = document.querySelector("div.order-2");
+    if (!container) {
+      console.error("[TR2ZWO][WhatsOnZwift] order-2 container not found.");
+      return [];
+    }
+    const bars = Array.from(container.querySelectorAll(".textbar"));
+    const segments = [];
+
+    for (const bar of bars) {
+      const text = bar.textContent || "";
+      const minMatch = text.match(/(\d+)\s*min/i);
+      if (!minMatch) continue;
+      const minutes = Number(minMatch[1]);
+      if (!Number.isFinite(minutes) || minutes <= 0) continue;
+
+      const powSpans = bar.querySelectorAll(
+        'span[data-unit="relpow"][data-value]'
+      );
+
+      if (powSpans.length === 1) {
+        const pct = Number(powSpans[0].getAttribute("data-value"));
+        if (!Number.isFinite(pct)) continue;
+        segments.push([minutes, pct, pct]);
+      } else if (powSpans.length >= 2) {
+        const pctLow = Number(powSpans[0].getAttribute("data-value"));
+        const pctHigh = Number(powSpans[1].getAttribute("data-value"));
+        if (!Number.isFinite(pctLow) || !Number.isFinite(pctHigh)) continue;
+        segments.push([minutes, pctLow, pctHigh]);
+      } else {
+        // No relpow spans; skip this bar
+        continue;
+      }
+    }
+
+    return segments;
+  }
+
+  function buildMetaFromWhatsonZwift(segments, url) {
+    const name = extractWozTitle();
+    const rawDescription = extractWozDescription();
+    const tss = extractWozStressPoints();
+    const ifValue = computeIfFromSegments(segments);
+    const kj = computeKjFromSegments(segments, 250);
+    const category = inferCategoryFromSegments(segments);
+
+    const description =
+      rawDescription || "Converted from WhatsOnZwift.";
+
+    return {
+      source: "WhatsOnZwift",
+      name,
+      description,
       category,
       tss,
       kj,
@@ -662,6 +857,44 @@ ${blocksXml}
     }
   }
 
+  async function generateWhatsonZwiftZwo(shouldDownload) {
+    const path = window.location.pathname;
+    if (!WHATSONZWIFT_WORKOUT_REGEX.test(path)) {
+      console.error("[TR2ZWO] [WhatsOnZwift] Not on a workout page.");
+      return;
+    }
+
+    try {
+      const url = window.location.href;
+
+      const segments = extractWozSegmentsFromDom();
+      if (!segments || segments.length === 0) {
+        console.error(
+          "[TR2ZWO] [WhatsOnZwift] No segments extracted from DOM."
+        );
+        return;
+      }
+
+      const blocks = buildBlocksFromSegments(segments);
+      const meta = buildMetaFromWhatsonZwift(segments, url);
+
+      const zwoXml = toZwoXmlFromBlocksAndMeta(blocks, meta);
+      const baseName = meta.name || "Workout";
+      const safeBase = baseName.replace(/[^\w\-]+/g, "_");
+      const filename = `${safeBase}.zwo`;
+
+      console.log("===== WhatsOnZwift → ZWO XML =====");
+      console.log(zwoXml);
+      console.log("===== End ZWO XML =====");
+
+      if (shouldDownload) {
+        downloadZwo(zwoXml, filename);
+      }
+    } catch (err) {
+      console.error("[TR2ZWO] [WhatsOnZwift] Error building ZWO:", err);
+    }
+  }
+
   // ---------- Main dispatcher ----------
 
   function generateZwoForCurrentPage(shouldDownload) {
@@ -670,6 +903,8 @@ ${blocksXml}
       generateTrainerRoadZwo(shouldDownload);
     } else if (site === "trainerday") {
       generateTrainerDayZwo(shouldDownload);
+    } else if (site === "whatsonzwift") {
+      generateWhatsonZwiftZwo(shouldDownload);
     } else {
       console.error("[TR2ZWO] Unsupported site:", location.host);
     }

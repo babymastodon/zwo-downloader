@@ -16,21 +16,23 @@
   "background": {
     "service_worker": "background.js"
   },
+  "host_permissions": [
+    "https://www.trainerroad.com/*",
+    "https://app.trainerday.com/*",
+    "https://app.api.trainerday.com/*",
+    "https://whatsonzwift.com/*"
+  ],
   "content_scripts": [
     {
       "matches": [
-        "https://www.trainerroad.com/*",
-        "https://app.trainerday.com/*"
+        "https://www.trainerroad.com/app/cycling/workouts/add/*",
+        "https://app.trainerday.com/workouts/*",
+        "https://whatsonzwift.com/workouts/*"
       ],
       "js": [
         "content.js"
       ],
       "run_at": "document_idle"
     }
-  ],
-  "host_permissions": [
-    "https://www.trainerroad.com/*",
-    "https://app.trainerday.com/*",
-    "https://app.trainerday.com/*"
   ]
 }

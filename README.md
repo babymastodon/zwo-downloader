@@ -1,30 +1,41 @@
 # ZWO Downloader
 
-A Chrome extension that converts TrainerRoad & TrainerDay workouts into Zwift `.zwo` files.
-The extension detects workout builder pages, retrieves workout data from the page, reconstructs the workout structure (including ramps and intervals), and provides a one-click download of a valid ZWO file.
+**ZWO Downloader** is a Chrome extension that converts cycling workouts from **TrainerRoad**, **TrainerDay**, and **WhatsOnZwift** into Zwift `.zwo` workout files.
+It detects supported workout pages, extracts or retrieves the underlying power-segment structure, reconstructs the workout with proper intervals and ramps, and provides a one-click ZWO download.
+
+## Supported Websites
+
+The extension automatically activates on:
+
+* **TrainerRoad**
+  `https://www.trainerroad.com/app/cycling/workouts/add/<id>`
+
+* **TrainerDay**
+  `https://app.trainerday.com/workouts/<slug>`
+
+* **WhatsOnZwift**
+  `https://whatsonzwift.com/workouts/...`
 
 ## Features
 
-* Automatically detects workout pages under:
+* Extracts workout structure directly from each site's data source:
 
-  ```
-  https://www.trainerroad.com/app/cycling/workouts/add/<id>
-  ```
-* Fetches and processes:
+  * TrainerRoad: `chart-data` (1-second samples) + `summary`
+  * TrainerDay: API lookup via `bySlug`
+  * WhatsOnZwift: DOM parsing of segment and metadata blocks
+* Generates Zwift-compatible `.zwo` files using:
 
-  * `chart-data` (1-second power samples)
-  * `summary` (metadata, progression level, TSS, kJ, IF)
-* Generates ZWO workouts using:
+  * **SteadyState**
+  * **Warmup** / **Cooldown**
+  * **IntervalsT** (automatically detected from repeating interval pairs)
+* Handles:
 
-  * SteadyState
-  * Warmup and Cooldown
-  * IntervalsT (detected from repeating patterns)
-* Correctly handles:
-
-  * Ramp up/down detection
-  * Single-second transitions
-  * Workout category from TrainerRoad progression
-* One-click download via the extension toolbar icon
+  * Accurate ramp detection
+  * 1-second transition smoothing
+  * Category inference (for WhatsOnZwift)
+  * TSS, kJ, duration, IF, and source tags
+* One-click download via the Chrome toolbar button
+* Outputs the full generated XML to the DevTools console for inspection
 
 ## Installation (Unpacked)
 
@@ -34,14 +45,18 @@ The extension detects workout builder pages, retrieves workout data from the pag
    git clone https://github.com/babymastodon/zwo-downloader.git
    cd zwo-downloader
    ```
+
 2. Open `chrome://extensions` in Chrome.
+
 3. Enable **Developer mode**.
-4. Choose **Load unpacked** and select the `src/` directory.
+
+4. Click **Load unpacked** and select the `src/` directory.
 
 ## Usage
 
-While viewing a TrainerRoad/TrainerDay workout builder page, click the extension’s toolbar icon to download the corresponding `.zwo` file.
-The extension prints its generated XML to the browser console for reference and debugging.
+Navigate to a supported workout page on TrainerRoad, TrainerDay, or WhatsOnZwift.
+Click the **ZWO Downloader** toolbar icon to download the corresponding `.zwo` file.
+The extension also logs the generated XML to the browser console for debugging or verification.
 
 ## License
 
