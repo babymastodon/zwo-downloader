@@ -72,20 +72,17 @@ async function saveZwoToDirectory(filename, xmlText) {
 // ---- Handle messages from content scripts ----
 
 chrome.runtime.onMessage.addListener((msg, _, sendResponse) => {
-  console.log("got msg", msg);
   if (!msg || typeof msg !== "object") return;
 
   if (msg.type === "TR2ZWO_SAVE_TO_DIR") {
     // Asynchronous response
     (async () => {
       const {filename, xml} = msg;
-      console.log("got filename", filename);
       if (!filename || !xml) {
         sendResponse({ok: false, reason: "missingData"});
         return;
       }
       const result = await saveZwoToDirectory(filename, xml);
-      console.log("send response", result);
       sendResponse(result);
     })();
     return true; // keep the message channel open for async sendResponse

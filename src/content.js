@@ -9,34 +9,6 @@
   const WHATSONZWIFT_WORKOUT_REGEX = /^\/workouts\/.+/;
   const DEFAULT_FTP = 250;
 
-  // ---------- FTP helpers (chrome.storage.sync) ----------
-
-  function getFtp() {
-    return new Promise((resolve) => {
-      try {
-        if (!chrome || !chrome.storage || !chrome.storage.sync) {
-          console.info("[ZWO Downloader] chrome.storage not available, using default FTP");
-          resolve(DEFAULT_FTP);
-          return;
-        }
-      } catch {
-        console.info("[ZWO Downloader] chrome.storage access failed, using default FTP");
-        resolve(DEFAULT_FTP);
-        return;
-      }
-
-      chrome.storage.sync.get({ftp: DEFAULT_FTP}, (data) => {
-        const v = Number(data.ftp);
-        if (!Number.isFinite(v) || v <= 0) {
-          console.info("[ZWO Downloader] Invalid FTP in storage, using default FTP");
-          resolve(DEFAULT_FTP);
-        } else {
-          resolve(v);
-        }
-      });
-    });
-  }
-
   // ---------- Helper: identify site ----------
 
   function getSiteType() {
@@ -497,26 +469,30 @@
     return `<![CDATA[${safe}]]>`;
   }
 
-  function buildMetaFromTrainerRoad(summary, url) {
+  function buildMetaFromTrainerRoad(summary, url, inferredCategory) {
     const s = summary || {};
-    let category = "Uncategorized";
-
-    if (
-      s.progression &&
-      s.progression.text &&
-      typeof s.progressionLevel === "number"
-    ) {
-      category = `${s.progression.text} ${s.progressionLevel.toFixed(2)}`;
-    } else if (s.progression && s.progression.text) {
-      category = s.progression.text;
-    }
-
     const name =
       s.workoutName ||
       (s.id != null ? `TrainerRoad Workout ${s.id}` : "TrainerRoad Workout");
 
     let description =
       s.workoutDescription || s.goalDescription || "Converted from TrainerRoad.";
+
+    // Append TrainerRoad progression info to description only
+    if (s.progression && s.progression.text) {
+      const lvl =
+        typeof s.progressionLevel === "number"
+          ? s.progressionLevel.toFixed(2)
+          : null;
+      const progText = lvl
+        ? `${s.progression.text} ${lvl}`
+        : s.progression.text;
+      description +=
+        (description ? "\n\n" : "") +
+        `TrainerRoad progression: ${progText}`;
+    }
+
+    const category = inferredCategory || "Uncategorized";
 
     return {
       source: "TrainerRoad",
@@ -527,16 +503,16 @@
     };
   }
 
-  function buildMetaFromTrainerDay(details, url) {
+  function buildMetaFromTrainerDay(details, url, inferredCategory) {
     const d = details || {};
     const title = d.title || document.title || "TrainerDay Workout";
-    const description = d.description || "";
-    const category = d.dominantZone || "Uncategorized";
+    const description = d.description || "Converted from TrainerDay.";
+    const category = inferredCategory || "Uncategorized";
 
     return {
       source: "TrainerDay",
       name: title,
-      description: description || "Converted from TrainerDay.",
+      description,
       category,
       url
     };
@@ -795,7 +771,6 @@
     return segments;
   }
 
-
   function buildMetaFromWhatsonZwift(rawSegments, url) {
     const name = extractWozTitle();
     const rawDescription = extractWozDescription();
@@ -838,19 +813,19 @@
     const ftp =
       metrics && typeof metrics.ftp === "number" ? metrics.ftp : null;
 
+    // Only put TSS, IF, and Duration in description (no kJ or FTP).
     const metricsList = [];
     if (tss != null) metricsList.push(`TSS: ${Math.round(tss)}`);
-    if (kj != null) metricsList.push(`kJ: ${Math.round(kj)}`);
     if (ifValue != null) metricsList.push(`IF: ${ifValue.toFixed(2)}`);
     if (durationMin != null)
       metricsList.push(`Duration: ${Math.round(durationMin)} min`);
-    if (ftp != null) metricsList.push(`FTP: ${Math.round(ftp)} W`);
 
     if (metricsList.length > 0) {
       description +=
         (description ? "\n\n" : "") + `Metrics: ${metricsList.join(", ")}`;
     }
 
+    // Tags still include kJ and FTP so the options UI can read them later.
     const tags = [];
     tags.push({name: source});
     tags.push({name: category});
@@ -910,22 +885,34 @@ ${blocksXml}
                 filename
               },
               (resp) => {
-                if (chrome.runtime && chrome.runtime.lastError) {
+                const lastError = chrome.runtime && chrome.runtime.lastError
+                  ? chrome.runtime.lastError
+                  : null;
+
+                console.log(
+                  "[ZWO Downloader] Background save response:",
+                  resp,
+                  "lastError:",
+                  lastError
+                );
+
+                // If the background is missing or errored, lastError will be set.
+                if (lastError) {
                   console.warn(
                     "[ZWO Downloader] Background save failed or not available:",
-                    chrome.runtime.lastError.message
+                    lastError.message
                   );
                   resolve(false);
                   return;
                 }
 
                 if (resp && resp.ok) {
-                  console.log("[ZWO Downloader] Saved ZWO file successfully:", filename);
+                  console.log("[ZWO Downloader] Saved ZWO file successfully to directory:", filename);
                   resolve(true);
                 } else {
                   console.warn(
                     "[ZWO Downloader] Background reported failure saving ZWO:",
-                    resp?.reason || resp
+                    resp && resp.reason ? resp.reason : resp
                   );
                   resolve(false);
                 }
@@ -981,7 +968,8 @@ ${blocksXml}
     const workoutId = match[1];
 
     try {
-      const ftp = await getFtp();
+      // Always use a fixed FTP of 250 for ZWO metrics
+      const ftp = DEFAULT_FTP;
 
       const chartUrl = `${BASE_TRAINERROAD}/app/api/workouts/${workoutId}/chart-data`;
       const summaryUrl = `${BASE_TRAINERROAD}/app/api/workouts/${workoutId}/summary?withDifficultyRating=true`;
@@ -1013,9 +1001,35 @@ ${blocksXml}
 
       const samples = buildSamples(courseData);
       const blocks = buildBlocksFromSamples(samples);
+
+      // Build raw segments for category inference: [minutes, startPct, endPct]
+      const rawSegmentsForCategory = [];
+      for (const b of blocks) {
+        const durSec = Number(b.duration) || 0;
+        if (durSec <= 0) continue;
+        const minutes = durSec / 60;
+        let startPct, endPct;
+        if (b.kind === "steady") {
+          const pct = (b.power || 0) * 100;
+          startPct = pct;
+          endPct = pct;
+        } else if (b.kind === "rampUp" || b.kind === "rampDown") {
+          startPct = (b.powerLow || 0) * 100;
+          endPct = (b.powerHigh || 0) * 100;
+        } else {
+          continue;
+        }
+        rawSegmentsForCategory.push([minutes, startPct, endPct]);
+      }
+      const inferredCategory = inferCategoryFromSegments(rawSegmentsForCategory);
+
       const metricSegments = blocksToMetricSegments(blocks);
       const metrics = computeMetricsFromSegments(metricSegments, ftp);
-      const meta = buildMetaFromTrainerRoad(summary, window.location.href);
+      const meta = buildMetaFromTrainerRoad(
+        summary,
+        window.location.href,
+        inferredCategory
+      );
 
       const zwoXml = toZwoXmlFromBlocksAndMeta(blocks, meta, metrics);
       const baseName = meta.name || "Workout";
@@ -1047,7 +1061,8 @@ ${blocksXml}
     const slug = match[1];
 
     try {
-      const ftp = await getFtp();
+      // Always use a fixed FTP of 250 for ZWO metrics
+      const ftp = DEFAULT_FTP;
       const url = window.location.href;
       console.info("[ZWO Downloader][TrainerDay] Fetching workout by slug:", slug);
       const details = await fetchTrainerDayWorkoutBySlug(slug);
@@ -1066,7 +1081,10 @@ ${blocksXml}
       const blocks = buildBlocksFromSegments(segments);
       const metricSegments = blocksToMetricSegments(blocks);
       const metrics = computeMetricsFromSegments(metricSegments, ftp);
-      const meta = buildMetaFromTrainerDay(details, url);
+
+      // Category inferred from TrainerDay segments
+      const inferredCategory = inferCategoryFromSegments(segments);
+      const meta = buildMetaFromTrainerDay(details, url, inferredCategory);
 
       const zwoXml = toZwoXmlFromBlocksAndMeta(blocks, meta, metrics);
       const baseName = meta.name || "Workout";
@@ -1096,7 +1114,8 @@ ${blocksXml}
     }
 
     try {
-      const ftp = await getFtp();
+      // Always use a fixed FTP of 250 for ZWO metrics
+      const ftp = DEFAULT_FTP;
       const url = window.location.href;
 
       const wozSegments = extractWozSegmentsFromDom();

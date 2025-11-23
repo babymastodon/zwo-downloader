@@ -4,15 +4,32 @@
 <head>
   <meta charset="utf-8" />
   <title>ZWO Downloader – Options</title>
+
   <style>
     :root {
       --accent: #e53935;
-      --accent-soft: rgba(229, 57, 53, 0.08);
-      --border: #e0e0e0;
+      --accent-soft: rgba(229, 57, 53, 0.04);
+      --border: #dddddd;
       --text-main: #222222;
       --text-muted: #666666;
-      --bg: #fafafa;
-      --radius: 14px;
+      --bg: #f5f5f5;
+      --radius: 8px;
+      --table-header-bg: #f2f2f2;
+      --surface: #ffffff;
+      --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.04);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #101010;
+        --surface: #181818;
+        --border: #333333;
+        --text-main: #f0f0f0;
+        --text-muted: #aaaaaa;
+        --table-header-bg: #202020;
+        --accent-soft: rgba(229, 57, 53, 0.06);
+        --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.6);
+      }
     }
 
     * {
@@ -21,70 +38,70 @@
 
     body {
       margin: 0;
-      padding: 24px;
+      padding: 20px;
+      background: var(--bg);
+      color: var(--text-main);
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
         sans-serif;
-      background: radial-gradient(circle at top left, #ffffff 0, #f6f6f6 40%, #f0f0f0 100%);
-      color: var(--text-main);
       display: flex;
       justify-content: center;
       align-items: flex-start;
     }
 
     .card {
-      background: #ffffff;
+      background: var(--surface);
       border-radius: var(--radius);
       border: 1px solid var(--border);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
-      padding: 20px 22px 18px;
-      max-width: 900px;
+      box-shadow: var(--shadow-soft);
+      padding: 18px 20px 16px;
+      max-width: 1100px;
       width: 100%;
     }
 
     .card-header {
       display: flex;
       align-items: center;
-      margin-bottom: 16px;
+      margin-bottom: 10px;
+      gap: 10px;
     }
 
     .logo-circle {
-      width: 40px;
-      height: 40px;
-      border-radius: 12px;
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
       background: var(--accent);
       display: flex;
       align-items: center;
       justify-content: center;
       color: #ffffff;
-      font-size: 20px;
-      margin-right: 12px;
-      box-shadow: 0 8px 18px rgba(229, 57, 53, 0.35);
+      font-size: 18px;
+      flex-shrink: 0;
     }
 
     .title {
       font-size: 18px;
       font-weight: 600;
-      letter-spacing: 0.02em;
+      letter-spacing: 0.01em;
     }
 
     .subtitle {
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text-muted);
       margin-top: 2px;
     }
 
-    .field-group {
+    .section-title {
       margin-top: 12px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      background: var(--accent-soft);
-      border: 1px solid rgba(229, 57, 53, 0.12);
+      font-size: 13px;
+      font-weight: 600;
     }
 
-    .field-label {
-      font-size: 13px;
-      color: var(--text-muted);
-      margin-bottom: 4px;
+    .field-group {
+      margin-top: 6px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: #fafafa;
+      border: 1px solid #e4e4e4;
     }
 
     .field-row {
@@ -94,96 +111,103 @@
       flex-wrap: wrap;
     }
 
-    input[type="number"] {
-      flex: 0 0 90px;
-      padding: 6px 8px;
-      border-radius: 8px;
-      border: 1px solid #d0d0d0;
-      font-size: 14px;
-      outline: none;
-      text-align: right;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease,
-        background-color 0.15s ease;
-    }
-
-    input[type="number"]:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 2px rgba(229, 57, 53, 0.15);
-      background: #ffffff;
-    }
-
-    .unit-label {
-      font-size: 13px;
-      color: var(--text-muted);
-    }
-
-    .hint {
-      font-size: 11px;
-      color: var(--text-muted);
-      margin-top: 6px;
-    }
-
-    .actions {
-      margin-top: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
     .btn {
-      border: none;
+      border: 1px solid transparent;
       border-radius: 999px;
-      padding: 7px 14px;
-      font-size: 13px;
+      padding: 5px 10px;
+      font-size: 12px;
       font-weight: 500;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      transition: background-color 0.15s ease, box-shadow 0.15s ease,
-        transform 0.08s ease;
+      background: #f5f5f5;
+      color: var(--text-main);
+      transition: background-color 0.12s ease, border-color 0.12s ease,
+        transform 0.06s ease, box-shadow 0.12s ease;
     }
 
     .btn-primary {
       background: var(--accent);
       color: #ffffff;
-      box-shadow: 0 6px 16px rgba(229, 57, 53, 0.35);
-    }
-
-    .btn-primary:hover {
-      background: #d32f2f;
-      box-shadow: 0 8px 20px rgba(229, 57, 53, 0.4);
-      transform: translateY(-1px);
-    }
-
-    .btn-primary:active {
-      transform: translateY(0);
-      box-shadow: 0 4px 10px rgba(229, 57, 53, 0.25);
+      border-color: var(--accent);
     }
 
     .btn-ghost {
       background: transparent;
       color: var(--accent);
-      border: 1px solid rgba(229, 57, 53, 0.4);
+      border-color: rgba(229, 57, 53, 0.4);
     }
 
-    .status {
+    .btn:hover {
+      transform: translateY(-0.5px);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+      box-shadow: none;
+    }
+
+    /* ZWO folder – single line, subtle */
+    #dirSection {
+      padding-top: 6px;
+      padding-bottom: 6px;
+    }
+
+    .dir-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: nowrap;
+      gap: 8px;
       font-size: 12px;
+      min-width: 0;
+    }
+
+    .dir-title {
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    #dirCurrent {
+      font-size: 11px;
+      color: var(--text-main);
+      max-width: 280px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .dir-support {
+      font-size: 11px;
       color: var(--text-muted);
-      min-height: 16px;
-      text-align: right;
     }
 
-    .status.saved {
-      color: var(--accent);
-      font-weight: 500;
+    .dir-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-left: auto;
+      white-space: nowrap;
     }
 
-    .status.error {
-      color: #d32f2f;
-      font-weight: 500;
+    .folder-btn {
+      padding: 4px 10px;
+      font-size: 12px;
+      border-radius: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      cursor: pointer;
+    }
+
+    .folder-btn:hover {
+      background: rgba(0, 0, 0, 0.06);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .folder-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
     }
 
     .footer-note {
@@ -204,31 +228,18 @@
         "Liberation Mono", "Courier New", monospace;
     }
 
-    /* NEW: directory + workout manager */
-
-    .section-title {
-      margin-top: 18px;
-      font-size: 15px;
-      font-weight: 600;
+    .hidden {
+      display: none;
     }
 
-    .dir-label {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .dir-current {
-      font-size: 12px;
-      font-weight: 500;
-      margin-top: 4px;
-    }
+    /* Workout manager */
 
     .manager {
-      margin-top: 18px;
-      border-radius: 10px;
+      margin-top: 14px;
+      border-radius: var(--radius);
       border: 1px solid var(--border);
-      padding: 12px;
-      background: #fff;
+      padding: 10px 12px 12px;
+      background: #ffffff;
     }
 
     .manager-header {
@@ -237,36 +248,63 @@
       justify-content: space-between;
       gap: 10px;
       flex-wrap: wrap;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
+    }
+
+    .manager-header-left {
+      min-width: 180px;
     }
 
     .manager-controls {
       display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       align-items: center;
+      gap: 8px;
+      justify-content: flex-end;
+      min-width: 0;
     }
 
     .manager-controls input[type="search"],
-    .manager-controls select {
+    .manager-controls select,
+    .manager-controls input[type="number"] {
       padding: 5px 8px;
       font-size: 12px;
       border-radius: 6px;
       border: 1px solid #d0d0d0;
       outline: none;
+      background: #ffffff;
+      color: var(--text-main);
+    }
+
+    #searchInput {
+      min-width: 240px;
     }
 
     .manager-controls input[type="search"]:focus,
-    .manager-controls select:focus {
+    .manager-controls select:focus,
+    .manager-controls input[type="number"]:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 2px rgba(229, 57, 53, 0.15);
+      box-shadow: 0 0 0 1px rgba(229, 57, 53, 0.3);
+    }
+
+    .ftp-inline-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+    }
+
+    .ftp-inline-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-right: 2px;
     }
 
     .manager-table-wrapper {
-      max-height: 320px;
+      max-height: 380px;
       overflow: auto;
-      margin-top: 6px;
-      border-radius: 8px;
+      margin-top: 4px;
+      border-radius: 6px;
       border: 1px solid #e0e0e0;
     }
 
@@ -279,14 +317,14 @@
     thead {
       position: sticky;
       top: 0;
-      background: #fafafa;
       z-index: 1;
+      background: var(--table-header-bg);
     }
 
     th,
     td {
-      padding: 6px 8px;
-      border-bottom: 1px solid #eee;
+      padding: 5px 8px;
+      border-bottom: 1px solid #eeeeee;
       text-align: left;
       white-space: nowrap;
     }
@@ -295,101 +333,228 @@
       font-weight: 600;
       font-size: 11px;
       color: var(--text-muted);
+      cursor: default;
+      user-select: none;
+      position: relative;
+      text-align: left;
+      /* explicit left align */
     }
 
-    tbody tr:nth-child(every) {}
+    th[data-sort-key] {
+      cursor: pointer;
+    }
 
-    tbody tr:hover {
+    th[data-sort-key]:hover {
+      text-decoration: underline;
+    }
+
+    th[data-sort-key]::after {
+      content: "";
+      font-size: 9px;
+      margin-left: 3px;
+    }
+
+    th.sorted-asc::after {
+      content: "▲";
+    }
+
+    th.sorted-desc::after {
+      content: "▼";
+    }
+
+    .workout-row {
+      cursor: pointer;
+      transition: background-color 0.12s ease, transform 0.06s ease;
+    }
+
+    .workout-row:hover {
       background: #fff7f7;
     }
 
-    .tag-pill {
-      display: inline-block;
-      padding: 1px 6px;
-      border-radius: 999px;
-      border: 1px solid #e0e0e0;
-      font-size: 10px;
-      margin-right: 4px;
-      margin-bottom: 2px;
+    .workout-row:active {
+      transform: scale(0.998);
+      background: #ffe9e9;
     }
 
-    .hidden {
-      display: none;
+    .workout-expanded-row td {
+      background: #fafafa;
+      white-space: normal;
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+
+    .workout-expanded {
+      display: flex;
+      gap: 10px;
+      padding: 6px 4px 4px;
+      align-items: stretch;
+      flex-wrap: wrap;
+    }
+
+    .workout-graph {
+      flex: 0 0 50%;
+      max-width: 50%;
+      min-width: 260px;
+      overflow: hidden;
+    }
+
+    .workout-graph-svg {
+      width: 100%;
+      height: 120px;
+      display: block;
+    }
+
+    .workout-detail {
+      flex: 1 1 0;
+      min-width: 220px;
+      font-size: 12px;
+      color: var(--text-main);
+      max-height: 160px;
+      overflow: auto;
+      padding-left: 4px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+
+    /* extra space only for actual paragraph breaks (double <br>) */
+    .workout-detail br+br {
+      display: block;
+      margin-bottom: 0.6em;
+      line-height: 2;
+    }
+
+    .workout-tooltip {
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    #managerSummary {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .status {
+      font-size: 11px;
+      color: var(--text-muted);
+      min-height: 16px;
+      text-align: right;
     }
 
     @media (prefers-color-scheme: dark) {
       body {
-        background: radial-gradient(circle at top left, #202020 0, #181818 40%, #121212 100%);
-        color: #f5f5f5;
+        background: var(--bg);
+        color: var(--text-main);
       }
 
       .card {
-        background: #1e1e1e;
-        border-color: #333333;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+        background: var(--surface);
+        border-color: var(--border);
       }
 
       .field-group {
-        background: rgba(229, 57, 53, 0.08);
-        border-color: rgba(229, 57, 53, 0.25);
+        background: #161616;
+        border-color: #333333;
       }
 
-      input[type="number"],
-      .manager-controls input[type="search"],
-      .manager-controls select {
-        background: #101010;
-        border-color: #444444;
-        color: #f5f5f5;
+      .btn {
+        background: #252525;
+        color: var(--text-main);
+        border-color: #333333;
       }
 
-      input[type="number"]:focus,
-      .manager-controls input[type="search"]:focus,
-      .manager-controls select:focus {
-        background: #000000;
+      .btn-primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #ffffff;
       }
 
-      .subtitle,
-      .field-label,
-      .hint,
-      .status,
-      .footer-note,
-      .unit-label,
-      .dir-label {
-        color: #a0a0a0;
-      }
-
-      .manager {
-        background: #181818;
-        border-color: #333;
-      }
-
-      .manager-table-wrapper {
-        border-color: #333;
-      }
-
-      thead {
-        background: #202020;
-      }
-
-      th,
-      td {
-        border-bottom-color: #333;
-      }
-
-      tbody tr:hover {
-        background: #261616;
-      }
-
-      .tag-pill {
-        border-color: #444;
-        background: #222;
-        color: #f5f5f5;
+      .btn-ghost {
+        background: transparent;
+        color: var(--accent);
+        border-color: rgba(229, 57, 53, 0.5);
       }
 
       .kbd {
         border-color: #555555;
         background: #222222;
-        color: #f5f5f5;
+        color: #f0f0f0;
+      }
+
+      .manager {
+        background: #1c1c1c;
+        border-color: #333333;
+      }
+
+      .manager-table-wrapper {
+        border-color: #333333;
+      }
+
+      th,
+      td {
+        border-bottom-color: #333333;
+      }
+
+      .workout-row:hover {
+        background: #281919;
+      }
+
+      .workout-row:active {
+        background: #3a2222;
+      }
+
+      .workout-expanded-row td {
+        background: #202020;
+      }
+
+      .workout-detail {
+        color: #f0f0f0;
+      }
+
+      .manager-controls input[type="search"],
+      .manager-controls select,
+      .manager-controls input[type="number"] {
+        background: #202020;
+        border-color: #444444;
+        color: #f0f0f0;
+      }
+
+      .manager-controls input[type="search"]::placeholder {
+        color: #777777;
+      }
+
+      .manager-controls input[type="search"]:focus,
+      .manager-controls select:focus,
+      .manager-controls input[type="number"]:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px rgba(229, 57, 53, 0.5);
+      }
+    }
+
+    @media (max-width: 800px) {
+      .workout-graph {
+        flex: 1 1 100%;
+        max-width: 100%;
+      }
+
+      .workout-detail {
+        flex: 1 1 100%;
+        padding-left: 0;
+        margin-top: 6px;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .card {
+        padding: 12px 10px;
+      }
+
+      .manager-header {
+        align-items: flex-start;
+      }
+
+      .manager-controls {
+        justify-content: flex-start;
+        flex-wrap: wrap;
       }
     }
 
@@ -403,73 +568,67 @@
       <div>
         <div class="title">ZWO Downloader</div>
         <div class="subtitle">
-          FTP is used only for energy (kJ) estimates in generated workouts.
+          Manage and explore your local ZWO workout library.
         </div>
       </div>
     </header>
 
-    <!-- FTP section (unchanged) -->
-    <section class="field-group">
-      <div class="field-label">Functional Threshold Power</div>
-      <div class="field-row">
-        <input id="ftpInput" type="number" min="50" max="500" step="1" />
-        <span class="unit-label">watts</span>
-      </div>
-      <div class="hint">
-        This FTP value is used to estimate total energy (kJ) in the ZWO
-        description and tags. Workout intensities inside the ZWO file remain
-        relative (as % of FTP) per the Zwift workout specification.
-      </div>
-    </section>
-
-    <div class="actions">
-      <button id="saveBtn" class="btn btn-primary">
-        <span>Save FTP</span>
-      </button>
-      <div id="status" class="status"></div>
-    </div>
-
-    <!-- NEW: directory selection -->
-    <h2 class="section-title">ZWO Folder</h2>
+    <!-- Directory selection -->
     <section class="field-group" id="dirSection">
-      <div class="field-label">Where to store / manage your ZWO files</div>
-      <div class="field-row">
-        <button id="chooseDirBtn" class="btn btn-primary">Choose folder…</button>
-        <button id="rescanBtn" class="btn btn-ghost">Rescan workouts</button>
-        <span id="dirSupportNote" class="dir-label"></span>
-      </div>
-      <div id="dirCurrent" class="dir-current"></div>
-      <div class="hint">
-        The folder you pick will be used by the Workout Manager below. Chrome
-        requires a one-time permission grant from you to access it.
+      <div class="dir-row">
+        <span class="dir-title">ZWO folder:</span>
+        <span id="dirCurrent">No folder selected.</span>
+
+        <button id="chooseDirBtn" class="folder-btn">Choose…</button>
+        <button id="rescanBtn" class="folder-btn">Rescan</button>
+
+        <span id="dirSupportNote" class="dir-support"></span>
+        <span class="dir-hint">Where newly downloaded ZWO files are saved and managed.</span>
       </div>
     </section>
 
-    <!-- NEW: Workout Manager -->
+    <!-- Workout Manager -->
     <section id="workoutManager" class="manager hidden">
       <div class="manager-header">
-        <div>
-          <div class="section-title" style="margin-top: 0;">Workout Manager</div>
+        <div class="manager-header-left">
+          <div class="section-title" style="margin-top: 0;">Workout manager</div>
           <div class="hint" id="managerSummary"></div>
         </div>
         <div class="manager-controls">
-          <input id="searchInput" type="search" placeholder="Search by name, tag, source…" />
+          <input id="searchInput" type="search" placeholder="Search by name, source, or text…" />
           <select id="categoryFilter">
             <option value="">All categories</option>
           </select>
+          <select id="durationFilter">
+            <option value="">All durations</option>
+            <option value="0-30">0–30 min</option>
+            <option value="30-60">30–60 min</option>
+            <option value="60-90">60–90 min</option>
+            <option value="90-120">90–120 min</option>
+            <option value="120-150">120–150 min</option>
+            <option value="150-180">150–180 min</option>
+            <option value="180-210">180–210 min</option>
+            <option value="210-240">210–240 min</option>
+            <option value=">240">&gt; 4 hours</option>
+          </select>
+          <div class="ftp-inline-group">
+            <span class="ftp-inline-label">FTP</span>
+            <input id="ftpInput" type="number" min="50" max="500" step="1" />
+          </div>
         </div>
       </div>
+
       <div class="manager-table-wrapper">
         <table>
           <thead>
             <tr>
-              <th>Name</th>
+              <th data-sort-key="name">Name</th>
               <th>Category</th>
               <th>Source</th>
-              <th>IF</th>
-              <th>TSS</th>
-              <th>Duration</th>
-              <th>Tags</th>
+              <th data-sort-key="if">IF</th>
+              <th data-sort-key="tss">TSS</th>
+              <th data-sort-key="duration">Duration</th>
+              <th data-sort-key="kjAdj">kJ (adj)</th>
             </tr>
           </thead>
           <tbody id="workoutTbody">
