@@ -1114,11 +1114,10 @@ function runStartCountdown(onDone) {
   let idx = 0;
 
   const totalHeight = window.innerHeight || 800;
-  const baseColor = overlayTextColor();
   const fontSize = Math.floor(totalHeight * 0.25);
-  const shadow = overlayBackground();
 
   const step = () => {
+    const darkMode = detectDarkMode();
     if (idx >= seq.length) {
       statusOverlay.style.opacity = "0";
       setTimeout(() => {
@@ -1132,8 +1131,9 @@ function runStartCountdown(onDone) {
     const label = seq[idx];
     statusText.textContent = label;
     statusText.style.fontSize = `${fontSize}px`;
-    statusText.style.color = baseColor;
-    statusText.style.textShadow = shadow;
+    statusText.style.color = overlayTextShadow(darkMode);
+    statusText.style.textShadow = overlayTextShadow(darkMode);
+    statusOverlay.style.background = overlayBackground(darkMode);
     statusOverlay.style.display = "flex";
 
     void statusOverlay.offsetWidth;
