@@ -1070,8 +1070,8 @@ function overlayTextColor(darkMode) {
 
 function overlayBackground(darkMode) {
   return darkMode
-    ? "rgba(34,34,34,.6)"
-    : "rgba(244,244,244,.7)";
+    ? "rgba(34,34,34,.8)"
+    : "rgba(244,244,244,.9)";
 }
 
 function overlayTextShadow(darkMode) {
