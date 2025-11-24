@@ -1157,11 +1157,11 @@ function runStartCountdown(onDone) {
 }
 
 function showPausedOverlay() {
-  showStatusMessage("Workout Paused", 0.2, 1500);
+  showStatusMessage("Workout Paused", 0.2, 1200);
 }
 
 function showResumedOverlay() {
-  showStatusMessage("Workout Resumed", 0.2, 1500);
+  showStatusMessage("Workout Resumed", 0.2, 1200);
 }
 
 // --------------------------- BLE parsing (FTMS + HR) ---------------------------
