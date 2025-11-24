@@ -24,7 +24,7 @@ const FTMS_OPCODES = {
   setTargetPower: 0x05,
   setTargetHeartRate: 0x06,
   startOrResume: 0x07,
-  stopOrPause: 0x08
+  stopOrPause: 0x08,
 };
 
 const DEFAULT_FTP = 250;
@@ -38,7 +38,8 @@ const STORAGE_ACTIVE_STATE = "activeWorkoutState";
 const STORAGE_SOUND_ENABLED = "soundEnabled";
 const STORAGE_LAST_DEVICE_ID = "lastKickrDeviceId";
 
-const AUTO_PAUSE_POWER_ZERO_SEC = 5;
+// Auto-pause after 1 second of 0 power (effectively 2 consecutive samples)
+const AUTO_PAUSE_POWER_ZERO_SEC = 1;
 const AUTO_PAUSE_GRACE_SEC = 15;
 
 const TRAINER_SEND_MIN_INTERVAL_SEC = 10; // don't spam trainer when target unchanged
@@ -126,7 +127,7 @@ let elapsedSec = 0;
 let currentIntervalIndex = 0;
 let intervalElapsedSec = 0;
 
-let lastSamplePower = 0;
+let lastSamplePower = null;
 let lastSampleHr = null;
 let lastSampleCadence = null;
 let lastSampleSpeed = null;
@@ -168,6 +169,9 @@ let lastResistanceSent = null;
 let lastErgSendTs = 0;
 let lastResistanceSendTs = 0;
 
+// dark-mode cache
+let darkModeCached = null;
+
 // --------------------------- Helpers ---------------------------
 
 function logDebug(msg) {
@@ -178,11 +182,17 @@ function logDebug(msg) {
   if (logLines.length > 5000) {
     logLines.splice(0, logLines.length - 5000);
   }
-  if (debugLog) {
-    debugLog.textContent = logLines.join("\n");
-    debugLog.scrollTop = debugLog.scrollHeight;
-  }
   console.log("[Workout]", msg);
+
+  if (debugLog) {
+    // Only tail if we're already at the bottom
+    const isAtBottom =
+      debugLog.scrollTop + debugLog.clientHeight >= debugLog.scrollHeight - 4;
+    debugLog.textContent = logLines.join("\n");
+    if (isAtBottom) {
+      debugLog.scrollTop = debugLog.scrollHeight;
+    }
+  }
 }
 
 function formatTimeMMSS(sec) {
@@ -204,17 +214,25 @@ function formatTimeHHMMSS(sec) {
 }
 
 function getCssVar(name) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
 }
 
-function isDarkMode() {
+function detectDarkMode() {
   return (
     window.matchMedia &&
     window.matchMedia("(prefers-color-scheme: dark)").matches
   );
 }
 
-// hex helpers for muted interval colors
+function isDarkMode() {
+  if (darkModeCached === null) {
+    darkModeCached = detectDarkMode();
+  }
+  return darkModeCached;
+}
+
 function parseHexColor(hex) {
   if (!hex) return null;
   let s = hex.trim().toLowerCase();
@@ -625,10 +643,11 @@ function drawChart() {
 
     const powerPath = pathForKey("power");
     if (powerPath) {
+      const powerColor = isDarkMode() ? "#ffb300" : "#f57c00";
       const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
       p.setAttribute("d", powerPath);
       p.setAttribute("fill", "none");
-      p.setAttribute("stroke", "#ffb300");
+      p.setAttribute("stroke", powerColor);
       p.setAttribute("stroke-width", "1.4");
       p.setAttribute("pointer-events", "none");
       chartSvg.appendChild(p);
@@ -647,10 +666,11 @@ function drawChart() {
 
     const cadPath = pathForKey("cadence");
     if (cadPath) {
+      const cadColor = isDarkMode() ? "#26a69a" : "#00897b";
       const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
       p.setAttribute("d", cadPath);
       p.setAttribute("fill", "none");
-      p.setAttribute("stroke", "#26a69a");
+      p.setAttribute("stroke", cadColor);
       p.setAttribute("stroke-width", "1.0");
       p.setAttribute("pointer-events", "none");
       chartSvg.appendChild(p);
@@ -769,10 +789,13 @@ function getCurrentZoneColor() {
 }
 
 function updateStatsDisplay() {
-  statPowerEl.textContent =
-    lastSamplePower != null && lastSamplePower > 0
-      ? String(Math.round(lastSamplePower))
-      : "--";
+  // show "--" only if we have no data at all, otherwise show 0 as 0
+  if (lastSamplePower == null) {
+    statPowerEl.textContent = "--";
+  } else {
+    const p = Math.round(lastSamplePower);
+    statPowerEl.textContent = String(p < 0 ? 0 : p);
+  }
 
   const target = getCurrentTargetPower();
   statTargetPowerEl.textContent =
@@ -1114,8 +1137,7 @@ function showResumedOverlay() {
 
 // --------------------------- BLE parsing (FTMS-only) ---------------------------
 
-// Parse Indoor Bike Data (0x2AD2) exactly like the working kickr-test.js,
-// but update our global lastSamplePower/cadence/etc and HUD.
+// Parse Indoor Bike Data (0x2AD2) like the working test script.
 function parseIndoorBikeData(dataView) {
   if (!dataView || dataView.byteLength < 4) return;
 
@@ -1144,16 +1166,15 @@ function parseIndoorBikeData(dataView) {
   if (moreDataBit === 0 && dataView.byteLength >= index + 2) {
     const raw = dataView.getUint16(index, true);
     index += 2;
-    lastSampleSpeed = raw / 100.0; // km/h (we don't chart it yet)
+    lastSampleSpeed = raw / 100.0; // km/h
   }
 
   if (flags & (1 << 1)) {
     if (dataView.byteLength >= index + 2) {
-      index += 2; // average speed, skip
+      index += 2; // average speed
     }
   }
 
-  // Instantaneous Cadence (bit2, uint16, 0.5 rpm)
   if (flags & (1 << 2)) {
     if (dataView.byteLength >= index + 2) {
       const rawCad = dataView.getUint16(index, true);
@@ -1162,28 +1183,24 @@ function parseIndoorBikeData(dataView) {
     }
   }
 
-  // Average Cadence (bit3)
   if (flags & (1 << 3)) {
     if (dataView.byteLength >= index + 2) {
-      index += 2;
+      index += 2; // avg cadence
     }
   }
 
-  // Total Distance (bit4, uint24)
   if (flags & (1 << 4)) {
     if (dataView.byteLength >= index + 3) {
-      index += 3;
+      index += 3; // distance
     }
   }
 
-  // Resistance Level (bit5, uint8)
   if (flags & (1 << 5)) {
     if (dataView.byteLength >= index + 1) {
-      index += 1;
+      index += 1; // resistance level
     }
   }
 
-  // Instantaneous Power (bit6, sint16, watts)
   if (flags & (1 << 6)) {
     if (dataView.byteLength >= index + 2) {
       const power = dataView.getInt16(index, true);
@@ -1192,26 +1209,22 @@ function parseIndoorBikeData(dataView) {
     }
   }
 
-  // Average Power (bit7)
   if (flags & (1 << 7)) {
     if (dataView.byteLength >= index + 2) {
-      index += 2;
+      index += 2; // avg power
     }
   }
 
-  // Expended Energy (bit8) – total + hour + minute
   if (flags & (1 << 8)) {
     if (dataView.byteLength >= index + 5) {
-      index += 5;
+      index += 5; // expended energy
     }
   }
 
-  // Heart Rate (bit9)
   if (flags & (1 << 9)) {
     if (dataView.byteLength >= index + 1) {
       const hr = dataView.getUint8(index);
       index += 1;
-      // use FTMS HR only as backup if no strap
       if (!isHrAvailable) {
         lastSampleHr = hr;
       }
@@ -1219,13 +1232,13 @@ function parseIndoorBikeData(dataView) {
   }
 
   if (flags & (1 << 10)) {
-    if (dataView.byteLength >= index + 1) index += 1;
+    if (dataView.byteLength >= index + 1) index += 1; // MET
   }
   if (flags & (1 << 11)) {
-    if (dataView.byteLength >= index + 2) index += 2;
+    if (dataView.byteLength >= index + 2) index += 2; // elapsed time
   }
   if (flags & (1 << 12)) {
-    if (dataView.byteLength >= index + 2) index += 2;
+    if (dataView.byteLength >= index + 2) index += 2; // remaining time
   }
 
   logDebug(
@@ -1534,7 +1547,7 @@ function startWorkoutTicker() {
             zeroPowerSeconds = 0;
           }
           if (!workoutPaused && !inGrace && zeroPowerSeconds >= AUTO_PAUSE_POWER_ZERO_SEC) {
-            logDebug("Auto-pause: power at 0 for several seconds.");
+            logDebug("Auto-pause: power at 0 for AUTO_PAUSE_POWER_ZERO_SEC.");
             setWorkoutPaused(true);
           }
         } else {
@@ -1958,8 +1971,25 @@ function applyModeUI() {
 
 // --------------------------- Init & restore ---------------------------
 
+function rerenderThemeSensitive() {
+  updateStatsDisplay();
+  drawChart();
+}
+
 async function initPage() {
   logDebug("Workout page init…");
+
+  darkModeCached = detectDarkMode();
+  if (window.matchMedia) {
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e) => {
+      darkModeCached = e.matches;
+      rerenderThemeSensitive();
+    };
+    if (mql.addEventListener) mql.addEventListener("change", handler);
+    else if (mql.addListener) mql.addListener(handler);
+  }
+
   loadSoundPreference();
 
   try {
@@ -2007,9 +2037,9 @@ async function initPage() {
     elapsedSec = activeState.elapsedSec || 0;
     currentIntervalIndex = activeState.currentIntervalIndex || 0;
     liveSamples = activeState.liveSamples || [];
-    lastSamplePower = activeState.lastSamplePower || 0;
-    lastSampleHr = activeState.lastSampleHr || null;
-    lastSampleCadence = activeState.lastSampleCadence || null;
+    lastSamplePower = activeState.lastSamplePower ?? lastSamplePower;
+    lastSampleHr = activeState.lastSampleHr ?? lastSampleHr;
+    lastSampleCadence = activeState.lastSampleCadence ?? lastSampleCadence;
     zeroPowerSeconds = activeState.zeroPowerSeconds || 0;
     autoPauseDisabledUntilSec =
       activeState.autoPauseDisabledUntilSec || 0;
@@ -2113,12 +2143,21 @@ async function initPage() {
   });
 
   document.addEventListener("keydown", (e) => {
+    // Space: start/resume workout
     if (e.code === "Space") {
       const tag = e.target && e.target.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (mode !== "workout") return;
       e.preventDefault();
       startWorkout();
+      return;
+    }
+
+    // Escape: close logs overlay
+    if (e.key === "Escape") {
+      if (debugOverlay && debugOverlay.style.display !== "none") {
+        debugOverlay.style.display = "none";
+      }
     }
   });
 
