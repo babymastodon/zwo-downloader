@@ -111,7 +111,7 @@ chrome.runtime.onInstalled.addListener((details) => {
     if (chrome.runtime.openOptionsPage) {
       chrome.runtime.openOptionsPage();
     } else if (chrome.tabs && chrome.runtime.getURL) {
-      chrome.tabs.create({url: chrome.runtime.getURL("options.html")});
+      chrome.tabs.create({url: chrome.runtime.getURL("workout.html")});
     }
   }
 });
