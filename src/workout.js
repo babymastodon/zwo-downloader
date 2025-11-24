@@ -3306,6 +3306,8 @@ async function initPage() {
 
   logsBtn.addEventListener("click", () => {
     debugOverlay.style.display = "flex";
+    debugLog.textContent = logLines.join("\n");
+    debugLog.scrollTop = debugLog.scrollHeight;
   });
   debugCloseBtn.addEventListener("click", () => {
     debugOverlay.style.display = "none";
