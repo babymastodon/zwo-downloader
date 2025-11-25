@@ -18,18 +18,17 @@
       --nav-bg: #f4f4f4;
       --grid-line: #bdbdbd;
       --grid-line-subtle: #d6d6d6;
-      --ftp-line: #9db8e6;
+      --ftp-line: #4f7ccb;
       --radius: 4px;
       --nav-control-height: 30px;
 
       /* interval colors (light mode, as in options.js) */
-      --zone-recovery: #b0bec5;
-      --zone-base: #81c784;
-      --zone-tempo: #ffb74d;
-      --zone-sweetspot: #ff8a65;
-      --zone-threshold: #e57373;
-      --zone-vo2: #ba68c8;
-      --zone-anaerobic: #9575cd;
+      --zone-recovery: #999999;
+      --zone-base: #54a5ff;
+      --zone-tempo: #6ae883;
+      --zone-threshold: #f3c732;
+      --zone-vo2: #fa7242;
+      --zone-anaerobic: #ef5351;
 
       --stat-number-color: #333333;
     }
@@ -51,13 +50,12 @@
         --ftp-line: #5c7ea6;
 
         /* slightly darkened versions of the light colors */
-        --zone-recovery: #90a4ae;
-        --zone-base: #66bb6a;
-        --zone-tempo: #ffa726;
-        --zone-sweetspot: #ff7043;
-        --zone-threshold: #ef5350;
-        --zone-vo2: #ab47bc;
-        --zone-anaerobic: #7e57c2;
+        --zone-recovery: #deddd5;
+        --zone-base: #3282e8;
+        --zone-tempo: #54af54;
+        --zone-threshold: #e9bb3c;
+        --zone-vo2: #e9512a;
+        --zone-anaerobic: #e53935;
 
         --stat-number-color: #f5f5f5;
       }
@@ -686,7 +684,7 @@
 
 
     .workout-picker-controls input[type="search"] {
-      min-width: 180px;
+      min-width: 220px;
     }
 
     .workout-picker-controls input[type="search"]:focus,
@@ -1147,13 +1145,13 @@
             <option value="210-240">210–240 min</option>
             <option value=">240">&gt; 4 hours</option>
           </select>
+          <button id="workoutPickerCloseBtn" class="picker-close-btn" title="Close">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
         </div>
 
-        <button id="workoutPickerCloseBtn" class="picker-close-btn" title="Close">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
       </header>
 
       <div id="pickerSummary" class="workout-picker-summary"></div>

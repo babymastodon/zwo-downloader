@@ -603,19 +603,17 @@ function zoneInfoFromRel(rel) {
   const clampedRel = Math.max(0, rel);
   const pct = clampedRel * 100;
   let key = "Recovery";
-  if (pct < 55) key = "Recovery";
+  if (pct < 60) key = "Recovery";
   else if (pct < 76) key = "Base";
-  else if (pct < 88) key = "Tempo";
-  else if (pct < 95) key = "SweetSpot";
-  else if (pct < 106) key = "Threshold";
-  else if (pct < 121) key = "VO2Max";
+  else if (pct < 90) key = "Tempo";
+  else if (pct < 105) key = "Threshold";
+  else if (pct < 119) key = "VO2Max";
   else key = "Anaerobic";
 
   const colorVarMap = {
     Recovery: "--zone-recovery",
     Base: "--zone-base",
     Tempo: "--zone-tempo",
-    SweetSpot: "--zone-sweetspot",
     Threshold: "--zone-threshold",
     VO2Max: "--zone-vo2",
     Anaerobic: "--zone-anaerobic",
@@ -2129,7 +2127,6 @@ function inferCategoryFromSegments(rawSegments) {
     recovery: 0,
     base: 0,
     tempo: 0,
-    sweetSpot: 0,
     threshold: 0,
     vo2: 0,
     anaerobic: 0,
@@ -2159,12 +2156,11 @@ function inferCategoryFromSegments(rawSegments) {
     totalSec += durSec;
 
     let zoneKey;
-    if (avgPct < 55) zoneKey = "recovery";
+    if (avgPct < 60) zoneKey = "recovery";
     else if (avgPct < 76) zoneKey = "base";
-    else if (avgPct < 88) zoneKey = "tempo";
-    else if (avgPct < 95) zoneKey = "sweetSpot";
-    else if (avgPct < 106) zoneKey = "threshold";
-    else if (avgPct < 121) zoneKey = "vo2";
+    else if (avgPct < 90) zoneKey = "tempo";
+    else if (avgPct < 105) zoneKey = "threshold";
+    else if (avgPct < 119) zoneKey = "vo2";
     else zoneKey = "anaerobic";
 
     zoneTime[zoneKey] += durSec;
@@ -2177,7 +2173,6 @@ function inferCategoryFromSegments(rawSegments) {
   const z = zoneTime;
   const hiSec = z.vo2 + z.anaerobic;
   const thrSec = z.threshold;
-  const ssSec = z.sweetSpot;
   const tempoSec = z.tempo;
 
   const workFrac = workSec / totalSec;
@@ -2191,28 +2186,23 @@ function inferCategoryFromSegments(rawSegments) {
   const fracWork = {
     hi: hiSec / safeDiv,
     thr: thrSec / safeDiv,
-    ss: ssSec / safeDiv,
     tempo: tempoSec / safeDiv,
   };
 
-  if (fracWork.hi >= 0.25) {
+  if (fracWork.hi >= 0.20) {
     const anaerFrac = z.anaerobic / safeDiv;
-    if (anaerFrac >= 0.15) {
+    if (anaerFrac >= 0.10) {
       return "HIIT";
     }
     return "VO2Max";
   }
 
-  if (fracWork.thr + fracWork.hi >= 0.4) {
+  if (fracWork.thr + fracWork.hi >= 0.35) {
     return "Threshold";
   }
 
-  if (fracWork.ss + fracWork.thr >= 0.4 || fracWork.ss >= 0.3) {
-    return "SweetSpot";
-  }
-
-  if (fracWork.tempo >= 0.5) {
-    return "SweetSpot";
+  if (fracWork.tempo + fracWork.thr + fracWork.hi >= 0.5) {
+    return "Tempo";
   }
 
   return "Base";
