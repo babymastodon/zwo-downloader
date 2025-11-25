@@ -1,4 +1,4 @@
-![Hero image placeholder — replace with a screenshot](docs/hero-placeholder.png)
+![Workout interface](docs/hero.png)
 
 # VeloTrainer
 
@@ -47,6 +47,8 @@ Open the workout runner page from the extension menu.
 Choose a `.zwo` from your library, connect your trainer and HR strap, set your FTP, and press **Start**.
 A countdown begins, ERG targets are applied, and the chart + metrics update in real time.
 When finished, a JSON file with your entire ride is written to your history folder.
+
+![Workout selector interface](docs/selector.png)
 
 ## Supported Platforms
 
