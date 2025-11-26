@@ -21,3 +21,4 @@
 - maybe not necessary to put metrics in the zwo file or description?
 - when workout ends, stop the timer, and continue showing target power, and also stop/save the workout
 - investigate stability of the timer (uses system clock instead of settimeout)
+- workout selector should remember filters and also have hotkeys for workout types.
