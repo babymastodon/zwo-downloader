@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "ZWO Downloader",
+  "name": "Velo Trainer",
   "version": "0.3.0",
   "description": "Download structured Zwift .zwo workouts from TrainerRoad, TrainerDay, and WhatsOnZwift. Contains an internal BLE test page for Wahoo KICKR.",
   
