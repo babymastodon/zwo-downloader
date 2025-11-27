@@ -947,7 +947,11 @@ function updateStatsDisplay() {
   statIntervalTimeEl.textContent = formatTimeMMSS(intervalElapsedSec);
 
   let color = getCurrentZoneColor();
-  color = mixColors(color, "#000000", 0.3);
+  if (detectDarkMode()) {
+    color = mixColors(color, "#000000", 0.25);
+  } else {
+    color = mixColors(color, "#000000", 0.35);
+  }
 
   document
     .querySelectorAll(".stat-value span")
@@ -1137,9 +1141,9 @@ function runStartCountdown(onDone) {
     statusOverlay.style.opacity = "1";
 
     if (label === "Start") {
-      playBeep(220, 660, 0.5);
+      playBeep(220, 660, 0.75);
     } else {
-      playBeep(120, 880, 0.4);
+      playBeep(120, 880, 0.75);
     }
 
     setTimeout(() => {
@@ -1154,11 +1158,11 @@ function runStartCountdown(onDone) {
 }
 
 function showPausedOverlay() {
-  showStatusMessage("Workout Paused", 0.2, 1200);
+  showStatusMessage("Workout Paused", 0.2, 1600);
 }
 
 function showResumedOverlay() {
-  showStatusMessage("Workout Resumed", 0.2, 1200);
+  showStatusMessage("Workout Resumed", 0.2, 1600);
 }
 
 // --------------------------- BLE parsing (FTMS + HR) ---------------------------
@@ -1775,10 +1779,10 @@ function handleIntervalBeep(currentT) {
 
   const secsToEnd = segment.endTimeSec - currentT;
   if (secsToEnd === 3 || secsToEnd === 2 || secsToEnd === 1) {
-    playBeep(120, 880, 0.4);
+    playBeep(120, 880, 0.75);
   }
   if (Math.floor(currentT) === segment.endTimeSec) {
-    playBeep(220, 660, 0.5);
+    playBeep(220, 660, 0.75);
   }
 }
 

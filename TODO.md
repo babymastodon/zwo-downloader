@@ -1,9 +1,6 @@
-- light mode, big numbers too dark
-- light mode, orange power line should be much brighter, red and green slightly brighter
 - if HRM disconnect during workout, try to reconnect
 - erg and resistance flows are not implemented
 - beep if the power change is greater than 5% to next interval, and the low beep is not audible
-- beep volume to 75%
 - maybe add a bit more padding at the top of big number titles
 - in product modals, or ideally local popup above FTP when selecting
 - need use monospace font for numbers, or somehow prevent them from shifting around
