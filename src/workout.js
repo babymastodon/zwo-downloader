@@ -633,7 +633,6 @@ function drawChart() {
   if (!chartSvg) return;
   updateChartDimensions();
   clearSvg(chartSvg);
-  const darkMode = detectDarkMode();
 
   const w = chartWidth;
   const h = chartHeight;
@@ -753,6 +752,9 @@ function drawChart() {
   chartSvg.appendChild(posLine);
 
   const samples = liveSamples;
+  const powerColor = getCssVar("--power-line");
+  const hrColor = getCssVar("--hr-line");
+  const cadColor = getCssVar("--cad-line")
   if (samples.length) {
     const pathForKey = (key) => {
       let d = "";
@@ -773,7 +775,7 @@ function drawChart() {
       const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
       p.setAttribute("d", powerPath);
       p.setAttribute("fill", "none");
-      p.setAttribute("stroke", getCssVar("--power-line"));
+      p.setAttribute("stroke", powerColor);
       p.setAttribute("stroke-width", "2.5");
       p.setAttribute("pointer-events", "none");
       chartSvg.appendChild(p);
@@ -784,7 +786,7 @@ function drawChart() {
       const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
       p.setAttribute("d", hrPath);
       p.setAttribute("fill", "none");
-      p.setAttribute("stroke", getCssVar("--hr-line"));
+      p.setAttribute("stroke", hrColor);
       p.setAttribute("stroke-width", "1.5");
       p.setAttribute("pointer-events", "none");
       chartSvg.appendChild(p);
@@ -795,7 +797,7 @@ function drawChart() {
       const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
       p.setAttribute("d", cadPath);
       p.setAttribute("fill", "none");
-      p.setAttribute("stroke", getCssVar("--cad-line"));
+      p.setAttribute("stroke", cadColor);
       p.setAttribute("stroke-width", "1.5");
       p.setAttribute("pointer-events", "none");
       chartSvg.appendChild(p);
