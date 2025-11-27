@@ -947,11 +947,7 @@ function updateStatsDisplay() {
   statIntervalTimeEl.textContent = formatTimeMMSS(intervalElapsedSec);
 
   let color = getCurrentZoneColor();
-  if (!detectDarkMode()) {
-    color = mixColors(color, "#000000", 0.5);
-  } else {
-    color = mixColors(color, "#000000", 0.3);
-  }
+  color = mixColors(color, "#000000", 0.3);
 
   document
     .querySelectorAll(".stat-value span")
