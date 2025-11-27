@@ -1466,6 +1466,18 @@ async function connectToDevice(device, type) {
       isBikeConnected = false;
       isBikeConnecting = false;
       setBikeStatus("error");
+
+      // Clear bike-derived stats so the UI shows "--"
+      lastSamplePower = null;
+      lastSampleCadence = null;
+      lastSampleSpeed = null;
+
+      // If HR was only coming from the bike (no dedicated HRM), clear that too
+      if (!isHrAvailable) {
+        lastSampleHr = null;
+      }
+
+      updateStatsDisplay();
     });
 
     isBikeConnecting = true;
@@ -1595,6 +1607,12 @@ async function connectToDevice(device, type) {
       logDebug("BLE disconnected (hr).");
       isHrAvailable = false;
       setHrStatus("error");
+
+      // Clear HR so the UI shows "--"
+      lastSampleHr = null;
+      hrBatteryPercent = null;
+      updateHrBatteryLabel();
+      updateStatsDisplay();
     });
 
     setHrStatus("connecting");
