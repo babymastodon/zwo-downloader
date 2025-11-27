@@ -143,6 +143,7 @@ let workoutRunning = false;
 let workoutPaused = false;
 let workoutStartedAt = null;
 let workoutStartEpochMs = null;
+let workoutStarting = false;
 let elapsedSec = 0;
 let currentIntervalIndex = 0;
 let intervalElapsedSec = 0;
@@ -1082,7 +1083,7 @@ function nowSec() {
 function maybeAutoStartFromPower(power) {
   if (!power || power <= 0) return;
   if (mode !== "workout") return;
-  if (workoutRunning) return;
+  if (workoutRunning || workoutStarting) return;
   if (elapsedSec > 0 || liveSamples.length) return;
   if (!scaledSegments.length) {
     if (power >= 75) {
@@ -3544,7 +3545,8 @@ function startWorkout() {
     return;
   }
 
-  if (!workoutRunning) {
+  if (!workoutRunning && !workoutStarting) {
+    workoutStarting = true;
     logDebug("Starting workout (countdown)...");
     Beeper.runStartCountdown(async () => {
       liveSamples = [];
@@ -3556,6 +3558,7 @@ function startWorkout() {
       zeroPowerSeconds = 0;
       autoPauseDisabledUntilSec = elapsedSec + AUTO_PAUSE_GRACE_SEC;
 
+      workoutStarting = false;
       setWorkoutRunning(true);
       setWorkoutPaused(false);
       updateStatsDisplay();
@@ -3590,6 +3593,7 @@ async function endWorkout() {
   }
   workoutRunning = false;
   workoutPaused = false;
+  workoutStarting = false;
   elapsedSec = 0;
   intervalElapsedSec = 0;
   liveSamples = [];
