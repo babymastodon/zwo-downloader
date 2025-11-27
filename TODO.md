@@ -1,6 +1,6 @@
 ## 🧩 Connectivity & Device Handling
 - if HRM disconnect during workout, try to reconnect
-- bluetooth auto reconnect bug: says "Bike BLE ready, sending initial trainer state." and then gets marked as successful
+- bluetooth auto reconnect bug: says "Bike BLE ready, sending initial trainer state." and then gets marked as successful in ui even though the connect failed
 - pause workout when bike disconnected, and maybe don't start workout if bike disconnected
 
 ## 🖥️ UI / UX Issues & Improvements

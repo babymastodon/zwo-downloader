@@ -469,6 +469,73 @@ async function maybeReconnectSavedDevicesOnLoad() {
   }
 }
 
+// --------------------------- Auto-reconnect queue ---------------------------
+
+// We serialize reconnect attempts so we don't hammer the BLE stack
+let reconnectQueue = [];
+let reconnectWorkerActive = false;
+
+/**
+ * kind: "bike" | "hr"
+ */
+function enqueueReconnect(kind) {
+  reconnectQueue.push(kind);
+  if (!reconnectWorkerActive) {
+    processReconnectQueue().catch((err) =>
+      logDebug("Reconnect worker error: " + err)
+    );
+  }
+}
+
+function clearReconnectQueue() {
+  reconnectQueue = [];
+  logDebug("Reconnect queue cleared (manual connect).");
+}
+
+async function processReconnectQueue() {
+  reconnectWorkerActive = true;
+  try {
+    while (reconnectQueue.length) {
+      const kind = reconnectQueue.shift();
+      if (kind === "bike") {
+        // Skip if we have no device or we're already connected/connecting
+        if (!bikeState.device || isBikeConnected || isBikeConnecting) {
+          continue;
+        }
+        logDebug("Auto-reconnect: attempting bike reconnect…");
+        setBikeStatus("connecting");
+        try {
+          await connectToDevice(bikeState.device, "bike");
+          await sendTrainerState(true);
+          logDebug("Auto-reconnect (bike) succeeded.");
+        } catch (err) {
+          logDebug("Auto-reconnect (bike) failed: " + err);
+          setBikeStatus("error");
+        }
+      } else if (kind === "hr") {
+        // Skip if we have no device or HR is already available
+        if (!hrState.device || isHrAvailable) {
+          continue;
+        }
+        logDebug("Auto-reconnect: attempting HRM reconnect…");
+        setHrStatus("connecting");
+        try {
+          await connectToDevice(hrState.device, "hr");
+          logDebug("Auto-reconnect (HRM) succeeded.");
+        } catch (err) {
+          logDebug("Auto-reconnect (HRM) failed: " + err);
+          setHrStatus("error");
+        }
+      }
+
+      // Small delay between reconnect attempts so we don't spam BLE
+      await new Promise((res) => setTimeout(res, 2000));
+    }
+  } finally {
+    reconnectWorkerActive = false;
+  }
+}
+
 
 // --------------------------- Pre-select directory messages (placeholders) ---------------------------
 
@@ -1478,6 +1545,7 @@ async function connectToDevice(device, type) {
       }
 
       updateStatsDisplay();
+      enqueueReconnect("bike");
     });
 
     isBikeConnecting = true;
@@ -1613,6 +1681,7 @@ async function connectToDevice(device, type) {
       hrBatteryPercent = null;
       updateHrBatteryLabel();
       updateStatsDisplay();
+      enqueueReconnect("hr");
     });
 
     setHrStatus("connecting");
@@ -1716,7 +1785,6 @@ async function maybeReconnectSavedDevicesOnLoad() {
 
   let devices;
   try {
-    // Single attempt is usually fine here; this isn't super flaky in practice
     devices = await navigator.bluetooth.getDevices();
   } catch (err) {
     logDebug("getDevices() failed: " + err);
@@ -1728,36 +1796,24 @@ async function maybeReconnectSavedDevicesOnLoad() {
   const bikeDevice = bikeId ? devices.find((d) => d.id === bikeId) : null;
   const hrDevice = hrId ? devices.find((d) => d.id === hrId) : null;
 
-  // 1) Reconnect bike first
+  // Queue bike reconnect
   if (bikeDevice) {
-    logDebug("Found previously paired bike, attempting reconnect…");
-    setBikeStatus("connecting");
-    try {
-      await connectToDevice(bikeDevice, "bike");
-      await sendTrainerState(true);
-    } catch (err) {
-      logDebug("Auto-reconnect failed for bike: " + err);
-      setBikeStatus("error");
-    }
+    logDebug("Found previously paired bike, queueing auto-reconnect…");
+    bikeState.device = bikeDevice;
+    enqueueReconnect("bike");
   } else if (bikeId) {
     logDebug("Saved bike ID not available in getDevices() (permission revoked?).");
   }
 
-  // 2) Then HRM
+  // Queue HRM reconnect
   if (hrDevice) {
-    logDebug("Found previously paired HRM, attempting reconnect…");
-    setHrStatus("connecting");
-    try {
-      await connectToDevice(hrDevice, "hr");
-    } catch (err) {
-      logDebug("Auto-reconnect failed for HRM: " + err);
-      setHrStatus("error");
-    }
+    logDebug("Found previously paired HRM, queueing auto-reconnect…");
+    hrState.device = hrDevice;
+    enqueueReconnect("hr");
   } else if (hrId) {
     logDebug("Saved HRM ID not available in getDevices() (permission revoked?).");
   }
 }
-
 
 // --------------------------- Interval beeps ---------------------------
 
@@ -3284,6 +3340,8 @@ async function initPage() {
   }
 
   bikeConnectBtn.addEventListener("click", async () => {
+    clearReconnectQueue();
+
     if (!navigator.bluetooth) {
       alert("Bluetooth not available in this browser.");
       return;
@@ -3300,6 +3358,8 @@ async function initPage() {
   });
 
   hrConnectBtn.addEventListener("click", async () => {
+    clearReconnectQueue();
+
     if (!navigator.bluetooth) {
       alert("Bluetooth not available in this browser.");
       return;
