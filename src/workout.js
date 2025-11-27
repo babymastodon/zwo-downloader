@@ -714,8 +714,8 @@ function drawChart() {
     shade.setAttribute("y", "0");
     shade.setAttribute("width", String(xPast));
     shade.setAttribute("height", String(h));
-    shade.setAttribute("fill", "#000000");
-    shade.setAttribute("fill-opacity", "0.1");
+    shade.setAttribute("fill", getCssVar("--shade-bg"));
+    shade.setAttribute("fill-opacity", "0.05");
     shade.setAttribute("pointer-events", "none");
     chartSvg.appendChild(shade);
   }
