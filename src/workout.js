@@ -1674,13 +1674,12 @@ const BleManager = (() => {
       } catch (err) {
         lastErr = err;
 
-        // If the GATT server is disconnected, further retries are pointless.
         if (isGattDisconnectedError(err) || isConnectInProgressError(err)) {
           logDebug &&
             logDebug(
-              `btRetry: aborting retries because GATT server is disconnected: ${err}`
+              `btRetry: aborting retries for non-retriable error: ${err}`
             );
-          break; // stop retry loop; let caller fail fast
+          break; // stop retry loop; caller will see the error
         }
 
         const delay = baseDelay * Math.pow(1.2, attempt - 1);
