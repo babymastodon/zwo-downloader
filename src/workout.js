@@ -5,26 +5,38 @@
 
 import {BleManager} from "./ble-manager.js";
 import {Beeper} from "./beeper.js";
+import {getWorkoutPicker} from "./workout-picker.js";
 
-// --------------------------- Constants / BLE UUIDs ---------------------------
+import {
+  computeScaledSegments,
+  renderWorkoutSegmentPolygon,
+  attachSegmentHover,
+  clearSvg,
+  getCssVar,
+  mixColors,
+  zoneInfoFromRel,
+} from "./workout-chart.js";
 
-const DEFAULT_FTP = 250;
+import {DEFAULT_FTP} from "./workout-metrics.js";
 
-const DB_NAME = "velo-drive";
-const DB_VERSION = 1;
-const WORKOUT_DIR_KEY = "workoutDirHandle";
-const ZWO_DIR_KEY = "dirHandle"; // same key used in options.js for the ZWO folder
+import {
+  loadWorkoutDirHandle,
+  saveWorkoutDirHandle,
+  ensureDirPermission,
+  loadSelectedWorkout,
+  loadActiveState,
+  saveActiveState,
+  clearActiveState,
+  loadSoundPreference,
+  saveSoundPreference,
+  saveFtp,
+} from "./storage.js";
 
-
-const STORAGE_SELECTED_WORKOUT = "selectedWorkout";
-const STORAGE_ACTIVE_STATE = "activeWorkoutState";
-const STORAGE_SOUND_ENABLED = "soundEnabled";
-const STORAGE_PICKER_STATE = "pickerState";
+// --------------------------- Constants ---------------------------
 
 // Auto-pause after 1 second of 0 power
 const AUTO_PAUSE_POWER_ZERO_SEC = 1;
 const AUTO_PAUSE_GRACE_SEC = 15;
-
 
 // --------------------------- DOM refs ---------------------------
 
@@ -75,7 +87,6 @@ const pickerDurationFilter = document.getElementById("pickerDurationFilter");
 const pickerSummaryEl = document.getElementById("pickerSummary");
 const pickerWorkoutTbody = document.getElementById("pickerWorkoutTbody");
 
-
 // --------------------------- State ---------------------------
 
 // Legacy flags and battery values used elsewhere in the UI
@@ -114,7 +125,6 @@ let autoPauseDisabledUntilSec = 0;
 let liveSamples = [];
 let chartWidth = 1000;
 let chartHeight = 400;
-let lastHoveredSegment = null;
 
 // scheduling
 let workoutTicker = null;
@@ -129,8 +139,10 @@ const logLines = [];
 let saveStateTimer = null;
 
 // workout dir
-let dbPromise = null;
 let workoutDirHandle = null;
+
+// picker singleton
+let picker = null;
 
 // --------------------------- Helpers ---------------------------
 
@@ -156,7 +168,6 @@ function logDebug(msg) {
 
 function initBleIntegration() {
   BleManager.on("bikeStatus", (status) => {
-    // Keep your existing UI status state in sync
     isBikeConnected = status === "connected";
     setBikeStatus(status);
   });
@@ -166,12 +177,10 @@ function initBleIntegration() {
     setHrStatus(status);
   });
 
-  // Update live samples used by HUD / auto-start
   BleManager.on("bikeSample", (sample) => {
     lastSamplePower = sample.power;
     lastSampleCadence = sample.cadence;
 
-    // Only use HR from bike if no dedicated HRM is connected
     if (!isHrAvailable) {
       lastSampleHr = sample.hrFromBike;
     }
@@ -195,10 +204,8 @@ function initBleIntegration() {
 
   BleManager.on("log", logDebug);
 
-  // Kick off auto-reconnect if possible
   BleManager.init({autoReconnect: true});
 }
-
 
 function formatTimeMMSS(sec) {
   const s = Math.max(0, Math.floor(sec));
@@ -224,39 +231,6 @@ function clampFtp(v) {
   return Math.min(500, Math.max(50, Math.round(n)));
 }
 
-function getCssVar(name) {
-  return getComputedStyle(document.documentElement)
-    .getPropertyValue(name)
-    .trim();
-}
-
-function parseHexColor(hex) {
-  if (!hex) return null;
-  let s = hex.trim().toLowerCase();
-  if (s.startsWith("#")) s = s.slice(1);
-  if (s.length === 3) {
-    s = s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
-  }
-  if (s.length !== 6) return null;
-  const r = parseInt(s.slice(0, 2), 16);
-  const g = parseInt(s.slice(2, 4), 16);
-  const b = parseInt(s.slice(4, 6), 16);
-  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return null;
-  return {r, g, b};
-}
-
-function mixColors(hexA, hexB, factor) {
-  const a = parseHexColor(hexA);
-  const b = parseHexColor(hexB);
-  if (!a || !b) return hexA;
-  const f = Math.min(1, Math.max(0, factor));
-  const r = Math.round(a.r * (1 - f) + b.r * f);
-  const g = Math.round(a.g * (1 - f) + b.g * f);
-  const bC = Math.round(a.b * (1 - f) + b.b * f);
-  const toHex = (x) => x.toString(16).padStart(2, "0");
-  return `#${toHex(r)}${toHex(g)}${toHex(bC)}`;
-}
-
 // --------------------------- Dynamic stat font sizing ---------------------------
 
 function adjustStatFontSizes() {
@@ -272,7 +246,7 @@ function adjustStatFontSizes() {
     const availableHeight = cardRect.height - labelRect.height - 6;
     const availableWidth = cardRect.width;
 
-    const isDouble = valueEl.classList.contains('stat-lg');
+    const isDouble = valueEl.classList.contains("stat-lg");
 
     const fs = Math.max(
       18,
@@ -293,120 +267,17 @@ function updateChartDimensions() {
   chartHeight = Math.max(200, Math.floor(h));
 }
 
-// --------------------------- IndexedDB (workout dir) ---------------------------
-
-function getDb() {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (ev) => {
-      const db = ev.target.result;
-      if (!db.objectStoreNames.contains("settings")) {
-        db.createObjectStore("settings", {keyPath: "key"});
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-  return dbPromise;
-}
-
-async function saveWorkoutDirHandle(handle) {
-  const db = await getDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("settings", "readwrite");
-    const store = tx.objectStore("settings");
-    store.put({key: WORKOUT_DIR_KEY, handle});
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-async function loadWorkoutDirHandle() {
-  const db = await getDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("settings", "readonly");
-    const store = tx.objectStore("settings");
-    const req = store.get(WORKOUT_DIR_KEY);
-    req.onsuccess = () => {
-      resolve(req.result ? req.result.handle : null);
-    };
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function ensureDirPermission(handle) {
-  if (!handle || !handle.queryPermission || !handle.requestPermission)
-    return false;
-  let p = await handle.queryPermission({mode: "readwrite"});
-  if (p === "granted") return true;
-  if (p === "denied") return false;
-  p = await handle.requestPermission({mode: "readwrite"});
-  return p === "granted";
-}
-
-async function saveZwoDirHandle(handle) {
-  const db = await getDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("settings", "readwrite");
-    const store = tx.objectStore("settings");
-    store.put({key: ZWO_DIR_KEY, handle});
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-async function loadZwoDirHandle() {
-  const db = await getDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("settings", "readonly");
-    const store = tx.objectStore("settings");
-    const req = store.get(ZWO_DIR_KEY);
-    req.onsuccess = () => {
-      resolve(req.result ? req.result.handle : null);
-    };
-    req.onerror = () => reject(req.error);
-  });
-}
-
-// --------------------------- Pre-select directory messages (placeholders) ---------------------------
+// --------------------------- Pre-select directory messages ---------------------------
 
 function showWorkoutSaveDirPreselectMessage() {
   alert("Pick the folder where your workout history will be saved.");
 }
 
-function showZwoDirectoryPreselectMessage() {
-  alert("Pick the folder where your .zwo workout files will be saved.");
-}
+// --------------------------- Sound preference ---------------------------
 
-
-// --------------------------- Storage helpers ---------------------------
-
-function loadSoundPreference() {
-  try {
-    if (!chrome || !chrome.storage || !chrome.storage.local) {
-      updateSoundIcon();
-      return;
-    }
-  } catch {
-    updateSoundIcon();
-    return;
-  }
-  chrome.storage.local.get({[STORAGE_SOUND_ENABLED]: true}, (data) => {
-    soundEnabled = data.hasOwnProperty(STORAGE_SOUND_ENABLED)
-      ? !!data[STORAGE_SOUND_ENABLED]
-      : true;
-    updateSoundIcon();
-  });
-}
-
-function persistSoundPreference() {
-  try {
-    if (!chrome || !chrome.storage || !chrome.storage.local) return;
-  } catch {
-    return;
-  }
-  chrome.storage.local.set({[STORAGE_SOUND_ENABLED]: soundEnabled});
+async function initSoundPreference() {
+  soundEnabled = await loadSoundPreference(true);
+  updateSoundIcon();
 }
 
 function updateSoundIcon() {
@@ -437,43 +308,14 @@ function buildScaledSegments() {
   const segments = workoutMeta.segmentsForMetrics;
   const ftp = currentFtp || workoutMeta.ftpAtSelection || DEFAULT_FTP;
 
-  const {scaledSegments: scaled, totalSec} = computeScaledSegments(segments, ftp);
+  const {scaledSegments: scaled, totalSec} = computeScaledSegments(
+    segments,
+    ftp
+  );
 
   scaledSegments = scaled;
   workoutTotalSec = totalSec;
 }
-
-
-function computeScaledSegments(segments, ftp) {
-  let t = 0;
-  const scaled = segments.map((seg) => {
-    const dur = Math.max(1, Math.round(seg.durationSec || 0));
-    const pStartRel = seg.pStartRel || 0;
-    const pEndRel = seg.pEndRel != null ? seg.pEndRel : pStartRel;
-
-    const targetWattsStart = Math.round(ftp * pStartRel);
-    const targetWattsEnd = Math.round(ftp * pEndRel);
-
-    const s = {
-      durationSec: dur,
-      startTimeSec: t,
-      endTimeSec: t + dur,
-      targetWattsStart,
-      targetWattsEnd,
-      pStartRel,
-      pEndRel,
-    };
-
-    t += dur;
-    return s;
-  });
-
-  return {
-    scaledSegments: scaled,
-    totalSec: t,
-  };
-}
-
 
 function getCurrentSegmentAtTime(tSec) {
   if (!scaledSegments.length) return {segment: null, target: null};
@@ -498,93 +340,6 @@ function getCurrentSegmentAtTime(tSec) {
 }
 
 // --------------------------- Chart rendering ---------------------------
-
-function zoneInfoFromRel(rel) {
-  const clampedRel = Math.max(0, rel);
-  const pct = clampedRel * 100;
-  let key = "Recovery";
-  if (pct < 60) key = "Recovery";
-  else if (pct < 76) key = "Base";
-  else if (pct < 90) key = "Tempo";
-  else if (pct < 105) key = "Threshold";
-  else if (pct < 119) key = "VO2Max";
-  else key = "Anaerobic";
-
-  const colorVarMap = {
-    Recovery: "--zone-recovery",
-    Base: "--zone-base",
-    Tempo: "--zone-tempo",
-    Threshold: "--zone-threshold",
-    VO2Max: "--zone-vo2",
-    Anaerobic: "--zone-anaerobic",
-  };
-
-  const color = getCssVar(colorVarMap[key] || "--zone-recovery");
-  const bg = getCssVar("--bg") || "#f4f4f4";
-
-  return {key, color, bg};
-}
-
-function clearSvg(svg) {
-  while (svg.firstChild) svg.removeChild(svg.firstChild);
-}
-
-// Shared helper: canonical segment rendering logic (based on drawChart)
-function renderWorkoutSegmentPolygon({
-  svg,
-  seg,
-  totalSec,
-  width,
-  height,
-  ftp,
-  maxY,
-}) {
-  if (!svg || !totalSec || totalSec <= 0) return;
-
-  const w = width;
-  const h = height;
-  console.log("width height", w, h);
-
-  const x1 = (seg.startTimeSec / totalSec) * w;
-  const x2 = (seg.endTimeSec / totalSec) * w;
-
-  const avgRel = (seg.pStartRel + seg.pEndRel) / 2;
-  const zone = zoneInfoFromRel(avgRel);
-
-  const p0 = seg.pStartRel * ftp;
-  const p1 = seg.pEndRel * ftp;
-
-  const y0 = h - (Math.min(maxY, Math.max(0, p0)) / maxY) * h;
-  const y1 = h - (Math.min(maxY, Math.max(0, p1)) / maxY) * h;
-
-  const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-  const pts = `${x1},${h} ${x1},${y0} ${x2},${y1} ${x2},${h}`;
-  poly.setAttribute("points", pts);
-
-  const muted = mixColors(zone.color, zone.bg, 0.3);
-  const hover = mixColors(zone.color, zone.bg, 0.15);
-
-  poly.setAttribute("fill", muted);
-  poly.setAttribute("fill-opacity", "1");
-  poly.setAttribute("stroke", "none");
-  poly.classList.add("chart-segment");
-
-  const p0Pct = seg.pStartRel * 100;
-  const p1Pct = seg.pEndRel * 100;
-  const durMin = seg.durationSec / 60;
-
-  poly.dataset.zone = zone.key;
-  poly.dataset.p0 = p0Pct.toFixed(0);
-  poly.dataset.p1 = p1Pct.toFixed(0);
-  poly.dataset.durMin = durMin.toFixed(1);
-  poly.dataset.color = zone.color;
-  poly.dataset.mutedColor = muted;
-  poly.dataset.hoverColor = hover;
-
-  svg.appendChild(poly);
-}
-
-// ===== drawChart using shared segment rendering =====
 
 function drawChart() {
   if (!chartSvg) return;
@@ -624,7 +379,6 @@ function drawChart() {
 
   const totalSec = workoutTotalSec || 1;
 
-  // use shared segment rendering
   scaledSegments.forEach((seg) => {
     renderWorkoutSegmentPolygon({
       svg: chartSvg,
@@ -734,90 +488,8 @@ function drawChart() {
       chartSvg.appendChild(p);
     }
   }
+
   attachSegmentHover(chartSvg, chartTooltip, chartPanel);
-}
-
-function attachSegmentHover(svg, tooltipEl, containerEl) {
-  if (!svg || !tooltipEl || !containerEl) return;
-
-  svg.addEventListener("mousemove", (e) => {
-    const segment = e.target.closest ? e.target.closest(".chart-segment") : null;
-
-    if (!segment) {
-      tooltipEl.style.display = "none";
-      if (lastHoveredSegment) {
-        const prevColor =
-          lastHoveredSegment.dataset.mutedColor ||
-          lastHoveredSegment.dataset.color;
-        if (prevColor) {
-          lastHoveredSegment.setAttribute("fill", prevColor);
-        }
-        lastHoveredSegment = null;
-      }
-      return;
-    }
-
-    const zone = segment.dataset.zone;
-    const p0 = segment.dataset.p0;
-    const p1 = segment.dataset.p1;
-    const durMin = segment.dataset.durMin;
-
-    if (p0 === p1) {
-      tooltipEl.textContent = `${zone}: ${p0}% FTP, ${durMin} min`;
-    } else {
-      tooltipEl.textContent = `${zone}: ${p0}%–${p1}% FTP, ${durMin} min`;
-    }
-    tooltipEl.style.display = "block";
-
-    const panelRect = containerEl.getBoundingClientRect();
-    let tx = e.clientX - panelRect.left + 8;
-    let ty = e.clientY - panelRect.top + 8;
-
-    const ttRect = tooltipEl.getBoundingClientRect();
-    if (tx + ttRect.width > panelRect.width - 4) {
-      tx = panelRect.width - ttRect.width - 4;
-    }
-    if (tx < 0) tx = 0;
-    if (ty + ttRect.height > panelRect.height - 4) {
-      ty = panelRect.height - ttRect.height - 4;
-    }
-    if (ty < 0) ty = 0;
-
-    tooltipEl.style.left = `${tx}px`;
-    tooltipEl.style.top = `${ty}px`;
-
-    if (lastHoveredSegment && lastHoveredSegment !== segment) {
-      const prevColor =
-        lastHoveredSegment.dataset.mutedColor ||
-        lastHoveredSegment.dataset.color;
-      if (prevColor) {
-        lastHoveredSegment.setAttribute("fill", prevColor);
-      }
-    }
-
-    const hoverColor =
-      segment.dataset.hoverColor ||
-      segment.dataset.color ||
-      segment.dataset.mutedColor;
-    if (hoverColor) {
-      segment.setAttribute("fill", hoverColor);
-    }
-
-    lastHoveredSegment = segment;
-  });
-
-  svg.addEventListener("mouseleave", () => {
-    tooltipEl.style.display = "none";
-    if (lastHoveredSegment) {
-      const prevColor =
-        lastHoveredSegment.dataset.mutedColor ||
-        lastHoveredSegment.dataset.color;
-      if (prevColor) {
-        lastHoveredSegment.setAttribute("fill", prevColor);
-      }
-      lastHoveredSegment = null;
-    }
-  });
 }
 
 // --------------------------- Stats & HUD ---------------------------
@@ -873,7 +545,7 @@ function updateStatsDisplay() {
   statIntervalTimeEl.textContent = formatTimeMMSS(intervalElapsedSec);
 
   let color = getCurrentZoneColor();
-  color = mixColors(color, "#000000", 0.30);
+  color = mixColors(color, "#000000", 0.3);
 
   document
     .querySelectorAll(".stat-value span")
@@ -897,7 +569,6 @@ function setHrStatus(state) {
 }
 
 function desiredTrainerState() {
-  // No hardware check here; BleManager knows if it's connected or not.
   if (mode === "workout") {
     const target = getCurrentTargetPower();
     if (target == null) return null;
@@ -952,7 +623,6 @@ function maybeAutoStartFromPower(power) {
   }
 }
 
-
 // --------------------------- Battery reporting ---------------------------
 
 function updateHrBatteryLabel() {
@@ -983,7 +653,6 @@ function handleIntervalBeep(currentT) {
 
   if (!next || !ftp) return;
 
-  // Compute current segment end watts and next segment start watts
   const currEnd =
     segment.targetWattsEnd != null
       ? segment.targetWattsEnd
@@ -996,31 +665,24 @@ function handleIntervalBeep(currentT) {
 
   if (!currEnd || currEnd <= 0) return;
 
-  const diffFrac = Math.abs(nextStart - currEnd) / currEnd; // fractional change
+  const diffFrac = Math.abs(nextStart - currEnd) / currEnd;
 
-  // If the change is less than 10%, do nothing at all
-  if (diffFrac < 0.10) return;
+  if (diffFrac < 0.1) return;
 
   const secsToEnd = segment.endTimeSec - currentT;
   const secsToEndInt = Math.round(secsToEnd);
 
-  // Next segment target as a % of FTP (1.2 = 120%)
   const nextTargetPct =
-    next.targetWattsStart != null
-      ? next.targetWattsStart / ftp
-      : next.pStartRel;
+    next.targetWattsStart != null ? next.targetWattsStart / ftp : next.pStartRel;
 
-  // 1) 9 seconds before a segment change of >= 30% AND next >= 120% FTP → air raid siren
-  if (diffFrac >= 0.30 && nextTargetPct >= 1.2 && secsToEndInt === 9) {
+  if (diffFrac >= 0.3 && nextTargetPct >= 1.2 && secsToEndInt === 9) {
     Beeper.playDangerDanger();
   }
 
-  // 2) 3 seconds before a segment change of >= 10% → beep pattern
   if (secsToEndInt === 3) {
     Beeper.playBeepPattern();
   }
 }
-
 
 // --------------------------- Workout ticker ---------------------------
 
@@ -1038,9 +700,7 @@ function startWorkoutTicker() {
     if (shouldAdvance) {
       elapsedSec += 1;
       const {segment, target} = getCurrentSegmentAtTime(elapsedSec);
-      intervalElapsedSec = segment
-        ? segment.endTimeSec - elapsedSec
-        : 0;
+      intervalElapsedSec = segment ? segment.endTimeSec - elapsedSec : 0;
 
       const currentTarget = target;
 
@@ -1053,7 +713,11 @@ function startWorkoutTicker() {
           } else {
             zeroPowerSeconds = 0;
           }
-          if (!workoutPaused && !inGrace && zeroPowerSeconds >= AUTO_PAUSE_POWER_ZERO_SEC) {
+          if (
+            !workoutPaused &&
+            !inGrace &&
+            zeroPowerSeconds >= AUTO_PAUSE_POWER_ZERO_SEC
+          ) {
             logDebug("Auto-pause: power at 0 for AUTO_PAUSE_POWER_ZERO_SEC.");
             setWorkoutPaused(true);
           }
@@ -1072,7 +736,6 @@ function startWorkoutTicker() {
         cadence: lastSampleCadence,
         targetPower: currentTarget || null,
       });
-      lastSampleTimeSec = t;
 
       if (mode === "workout" && workoutRunning && !workoutPaused) {
         handleIntervalBeep(elapsedSec);
@@ -1120,7 +783,6 @@ async function ensureWorkoutDir() {
   if (!workoutDirHandle) {
     logDebug("Prompting for workout directory…");
 
-    // NEW: show pre-select message before user sees the system picker
     showWorkoutSaveDirPreselectMessage();
 
     const handle = await window.showDirectoryPicker();
@@ -1134,9 +796,7 @@ async function ensureWorkoutDir() {
   } else {
     const ok = await ensureDirPermission(workoutDirHandle);
     if (!ok) {
-      // NEW: re-show the message if we need to re-prompt for a directory
       showWorkoutSaveDirPreselectMessage();
-
       const handle = await window.showDirectoryPicker();
       const ok2 = await ensureDirPermission(handle);
       if (!ok2) {
@@ -1151,7 +811,6 @@ async function ensureWorkoutDir() {
   return workoutDirHandle;
 }
 
-
 async function saveWorkoutFile() {
   if (!workoutMeta || !liveSamples.length) return;
 
@@ -1160,8 +819,7 @@ async function saveWorkoutFile() {
 
   const now = new Date();
   const nameSafe =
-    workoutMeta.name?.replace(/[<>:"/\\|?*]+/g, "_").slice(0, 60) ||
-    "workout";
+    workoutMeta.name?.replace(/[<>:"/\\|?*]+/g, "_").slice(0, 60) || "workout";
   const timestamp = now
     .toISOString()
     .replace(/[:]/g, "-")
@@ -1202,12 +860,6 @@ function scheduleSaveActiveState() {
 }
 
 function persistActiveState() {
-  try {
-    if (!chrome || !chrome.storage || !chrome.storage.local) return;
-  } catch {
-    return;
-  }
-
   const state = {
     workoutMeta,
     currentFtp,
@@ -1226,937 +878,8 @@ function persistActiveState() {
       : null,
   };
 
-  chrome.storage.local.set({[STORAGE_ACTIVE_STATE]: state});
+  saveActiveState(state);
 }
-
-function clearActiveState() {
-  try {
-    if (!chrome || !chrome.storage || !chrome.storage.local) return;
-  } catch {
-    return;
-  }
-  chrome.storage.local.remove(STORAGE_ACTIVE_STATE);
-}
-
-function loadSelectedWorkout() {
-  return new Promise((resolve) => {
-    try {
-      if (!chrome || !chrome.storage || !chrome.storage.local) {
-        resolve(null);
-        return;
-      }
-    } catch {
-      resolve(null);
-      return;
-    }
-    chrome.storage.local.get(
-      {[STORAGE_SELECTED_WORKOUT]: null},
-      (data) => {
-        resolve(data[STORAGE_SELECTED_WORKOUT]);
-      }
-    );
-  });
-}
-
-function loadActiveState() {
-  return new Promise((resolve) => {
-    try {
-      if (!chrome || !chrome.storage || !chrome.storage.local) {
-        resolve(null);
-        return;
-      }
-    } catch {
-      resolve(null);
-      return;
-    }
-    chrome.storage.local.get(
-      {[STORAGE_ACTIVE_STATE]: null},
-      (data) => {
-        resolve(data[STORAGE_ACTIVE_STATE]);
-      }
-    );
-  });
-}
-// --------------------------- Workout picker (ZWO selector popup) ---------------------------
-
-// State for the popup
-let zwoDirHandle = null;
-let pickerWorkouts = [];
-let pickerExpandedKey = null;
-let pickerSortKey = "kjAdj"; // "if", "tss", "kjAdj", "duration", "name"
-let pickerSortDir = "asc";   // "asc" | "desc"
-let isPickerOpen = false;
-
-function loadPickerState() {
-  return new Promise((resolve) => {
-    try {
-      if (!chrome || !chrome.storage || !chrome.storage.local) {
-        resolve(null);
-        return;
-      }
-    } catch {
-      resolve(null);
-      return;
-    }
-
-    chrome.storage.local.get(
-      {[STORAGE_PICKER_STATE]: null},
-      (data) => {
-        resolve(data[STORAGE_PICKER_STATE]);
-      }
-    );
-  });
-}
-
-function persistPickerState() {
-  try {
-    if (!chrome || !chrome.storage || !chrome.storage.local) return;
-  } catch {
-    return;
-  }
-
-  const state = {
-    searchTerm: pickerSearchInput ? pickerSearchInput.value : "",
-    category: pickerCategoryFilter ? pickerCategoryFilter.value : "",
-    duration: pickerDurationFilter ? pickerDurationFilter.value : "",
-    sortKey: pickerSortKey,
-    sortDir: pickerSortDir,
-  };
-
-  chrome.storage.local.set({[STORAGE_PICKER_STATE]: state});
-}
-
-// metrics / parsing (copied from options.js, adapted)
-
-function computeMetricsFromSegments(segments, ftp) {
-  const ftpVal = Number(ftp);
-  if (
-    !Array.isArray(segments) ||
-    segments.length === 0 ||
-    !Number.isFinite(ftpVal) ||
-    ftpVal <= 0
-  ) {
-    return {
-      totalSec: 0,
-      durationMin: 0,
-      ifValue: null,
-      tss: null,
-      kj: null,
-      ftp: ftpVal > 0 ? ftpVal : null,
-    };
-  }
-
-  let totalSec = 0;
-  let sumFrac = 0;
-  let sumFrac4 = 0;
-
-  for (const seg of segments) {
-    const dur = Math.max(1, Math.round(Number(seg.durationSec) || 0));
-    const p0 = Number(seg.pStartRel) || 0;
-    const p1 = Number(seg.pEndRel) || 0;
-    const dp = p1 - p0;
-
-    for (let i = 0; i < dur; i++) {
-      const tMid = (i + 0.5) / dur;
-      const frac = p0 + dp * tMid;
-      sumFrac += frac;
-      const f2 = frac * frac;
-      sumFrac4 += f2 * f2;
-      totalSec++;
-    }
-  }
-
-  if (totalSec === 0) {
-    return {
-      totalSec: 0,
-      durationMin: 0,
-      ifValue: null,
-      tss: null,
-      kj: null,
-      ftp: ftpVal,
-    };
-  }
-
-  const npRel = Math.pow(sumFrac4 / totalSec, 0.25);
-  const IF = npRel;
-  const durationMin = totalSec / 60;
-  const tss = (totalSec * IF * IF) / 36;
-  const kJ = (ftpVal * sumFrac) / 1000;
-
-  return {
-    totalSec,
-    durationMin,
-    ifValue: IF,
-    tss,
-    kj: kJ,
-    ftp: ftpVal,
-  };
-}
-
-function inferCategoryFromSegments(rawSegments) {
-  if (!Array.isArray(rawSegments) || rawSegments.length === 0) {
-    return "Uncategorized";
-  }
-
-  const zoneTime = {
-    recovery: 0,
-    base: 0,
-    tempo: 0,
-    threshold: 0,
-    vo2: 0,
-    anaerobic: 0,
-  };
-
-  let totalSec = 0;
-  let workSec = 0;
-
-  for (const seg of rawSegments) {
-    if (!Array.isArray(seg) || seg.length < 2) continue;
-    const minutes = Number(seg[0]);
-    const startPct = Number(seg[1]);
-    const endPct = seg.length > 2 && seg[2] != null ? Number(seg[2]) : startPct;
-
-    if (
-      !Number.isFinite(minutes) ||
-      !Number.isFinite(startPct) ||
-      !Number.isFinite(endPct)
-    ) {
-      continue;
-    }
-
-    const durSec = minutes * 60;
-    if (durSec <= 0) continue;
-
-    const avgPct = (startPct + endPct) / 2;
-    totalSec += durSec;
-
-    let zoneKey;
-    if (avgPct < 60) zoneKey = "recovery";
-    else if (avgPct < 76) zoneKey = "base";
-    else if (avgPct < 90) zoneKey = "tempo";
-    else if (avgPct < 105) zoneKey = "threshold";
-    else if (avgPct < 119) zoneKey = "vo2";
-    else zoneKey = "anaerobic";
-
-    zoneTime[zoneKey] += durSec;
-
-    if (avgPct >= 75) workSec += durSec;
-  }
-
-  if (totalSec === 0) return "Uncategorized";
-
-  const z = zoneTime;
-  const hiSec = z.vo2 + z.anaerobic;
-  const thrSec = z.threshold;
-  const tempoSec = z.tempo;
-
-  const workFrac = workSec / totalSec;
-
-  if (workFrac < 0.15) {
-    if (z.recovery / totalSec >= 0.7) return "Recovery";
-    return "Base";
-  }
-
-  const safeDiv = workSec || 1;
-  const fracWork = {
-    hi: hiSec / safeDiv,
-    thr: thrSec / safeDiv,
-    tempo: tempoSec / safeDiv,
-  };
-
-  if (fracWork.hi >= 0.20) {
-    const anaerFrac = z.anaerobic / safeDiv;
-    if (anaerFrac >= 0.10) {
-      return "HIIT";
-    }
-    return "VO2Max";
-  }
-
-  if (fracWork.thr + fracWork.hi >= 0.35) {
-    return "Threshold";
-  }
-
-  if (fracWork.tempo + fracWork.thr + fracWork.hi >= 0.5) {
-    return "Tempo";
-  }
-
-  return "Base";
-}
-
-function extractSegmentsFromZwo(doc) {
-  const workoutEl = doc.querySelector("workout_file > workout");
-  if (!workoutEl) return {segmentsForMetrics: [], segmentsForCategory: []};
-
-  const segments = [];
-  const rawSegments = [];
-
-  const children = Array.from(workoutEl.children);
-
-  function pushSeg(durationSec, pLow, pHigh) {
-    segments.push({
-      durationSec,
-      pStartRel: pLow,
-      pEndRel: pHigh,
-    });
-    const minutes = durationSec / 60;
-    rawSegments.push([minutes, pLow * 100, pHigh * 100]);
-  }
-
-  for (const el of children) {
-    const tag = el.tagName;
-    if (!tag) continue;
-    const name = tag.toLowerCase();
-
-    if (name === "steadystate") {
-      const dur = Number(el.getAttribute("Duration") || el.getAttribute("duration") || 0);
-      const p = Number(el.getAttribute("Power") || el.getAttribute("power") || 0);
-      if (dur > 0 && Number.isFinite(p)) {
-        pushSeg(dur, p, p);
-      }
-    } else if (name === "warmup" || name === "cooldown") {
-      const dur = Number(el.getAttribute("Duration") || el.getAttribute("duration") || 0);
-      const pLow = Number(el.getAttribute("PowerLow") || el.getAttribute("powerlow") || 0);
-      const pHigh = Number(el.getAttribute("PowerHigh") || el.getAttribute("powerhigh") || 0);
-      if (dur > 0 && Number.isFinite(pLow) && Number.isFinite(pHigh)) {
-        pushSeg(dur, pLow, pHigh);
-      }
-    } else if (name === "intervalst") {
-      const repeat = Number(el.getAttribute("Repeat") || el.getAttribute("repeat") || 1);
-      const onDur = Number(el.getAttribute("OnDuration") || el.getAttribute("onduration") || 0);
-      const offDur = Number(el.getAttribute("OffDuration") || el.getAttribute("offduration") || 0);
-      const onP = Number(el.getAttribute("OnPower") || el.getAttribute("onpower") || 0);
-      const offP = Number(el.getAttribute("OffPower") || el.getAttribute("offpower") || 0);
-
-      const reps = Number.isFinite(repeat) && repeat > 0 ? repeat : 1;
-      for (let i = 0; i < reps; i++) {
-        if (onDur > 0 && Number.isFinite(onP)) {
-          pushSeg(onDur, onP, onP);
-        }
-        if (offDur > 0 && Number.isFinite(offP)) {
-          pushSeg(offDur, offP, offP);
-        }
-      }
-    }
-  }
-
-  return {
-    segmentsForMetrics: segments,
-    segmentsForCategory: rawSegments,
-  };
-}
-
-function parseZwo(xmlText, fileName) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlText, "application/xml");
-
-  const nameEl = doc.querySelector("workout_file > name");
-  const descEl = doc.querySelector("workout_file > description");
-  const tagEls = Array.from(doc.querySelectorAll("workout_file > tags > tag"));
-
-  const name = (nameEl && nameEl.textContent.trim()) || fileName;
-  const description = descEl ? descEl.textContent || "" : "";
-
-  const tags = tagEls
-    .map((t) => t.getAttribute("name") || "")
-    .filter(Boolean);
-
-  let source = null;
-  let ftpFromTag = null;
-
-  for (const tag of tags) {
-    const trimmed = tag.trim();
-    if (/^TrainerRoad$/i.test(trimmed)) source = "TrainerRoad";
-    else if (/^TrainerDay$/i.test(trimmed)) source = "TrainerDay";
-    else if (/^WhatsOnZwift$/i.test(trimmed)) source = "WhatsOnZwift";
-
-    const ftpMatch = trimmed.match(/^FTP:(\d+)/i);
-    if (ftpMatch) {
-      ftpFromTag = Number(ftpMatch[1]);
-    }
-  }
-
-  const {segmentsForMetrics, segmentsForCategory} = extractSegmentsFromZwo(doc);
-
-  const ftpUsed = Number.isFinite(ftpFromTag) && ftpFromTag > 0 ? ftpFromTag : DEFAULT_FTP;
-  const metrics = computeMetricsFromSegments(segmentsForMetrics, ftpUsed);
-
-  const category = inferCategoryFromSegments(segmentsForCategory);
-
-  return {
-    fileName,
-    name,
-    description,
-    tags,
-    source: source || "Unknown",
-    ftpFromFile: ftpUsed,
-    baseKj: metrics.kj != null ? metrics.kj : null,
-    ifValue: metrics.ifValue != null ? metrics.ifValue : null,
-    tss: metrics.tss != null ? metrics.tss : null,
-    durationMin: metrics.durationMin != null ? metrics.durationMin : null,
-    totalSec: metrics.totalSec != null ? metrics.totalSec : null,
-    category,
-    segmentsForMetrics,
-    segmentsForCategory,
-  };
-}
-
-async function scanWorkoutsFromDirectory(handle) {
-  const workouts = [];
-  try {
-    for await (const entry of handle.values()) {
-      if (entry.kind !== "file") continue;
-      if (!entry.name.toLowerCase().endsWith(".zwo")) continue;
-
-      const file = await entry.getFile();
-      const text = await file.text();
-      const meta = parseZwo(text, entry.name);
-      workouts.push(meta);
-    }
-  } catch (err) {
-    console.error("[Workout] Error scanning workouts:", err);
-  }
-  return workouts;
-}
-
-// adjusted kJ using current FTP
-function getAdjustedKjForPicker(workout) {
-  if (workout.baseKj == null || !Number.isFinite(workout.ftpFromFile) || !Number.isFinite(currentFtp)) {
-    return workout.baseKj;
-  }
-  if (workout.ftpFromFile <= 0) return workout.baseKj;
-  return workout.baseKj * (currentFtp / workout.ftpFromFile);
-}
-
-function getDurationBucket(durationMin) {
-  if (!Number.isFinite(durationMin)) return ">240";
-  if (durationMin <= 30) return "0-30";
-  if (durationMin <= 60) return "30-60";
-  if (durationMin <= 90) return "60-90";
-  if (durationMin <= 120) return "90-120";
-  if (durationMin <= 150) return "120-150";
-  if (durationMin <= 180) return "150-180";
-  if (durationMin <= 210) return "180-210";
-  if (durationMin <= 240) return "210-240";
-  return ">240";
-}
-
-function computeVisiblePickerWorkouts() {
-  const searchTerm = (pickerSearchInput && pickerSearchInput.value || "").toLowerCase();
-  const catValue = (pickerCategoryFilter && pickerCategoryFilter.value) || "";
-  const durValue = (pickerDurationFilter && pickerDurationFilter.value) || "";
-
-  let shown = pickerWorkouts;
-
-  if (catValue) {
-    shown = shown.filter((w) => w.category === catValue);
-  }
-
-  if (durValue) {
-    shown = shown.filter((w) => getDurationBucket(w.durationMin) === durValue);
-  }
-
-  if (searchTerm) {
-    shown = shown.filter((w) => {
-      const haystack = [
-        w.name,
-        w.category,
-        w.source,
-        (w.description || "").slice(0, 300),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(searchTerm);
-    });
-  }
-
-  const sortKey = pickerSortKey;
-  const dir = pickerSortDir === "asc" ? 1 : -1;
-
-  shown = shown.slice().sort((a, b) => {
-    function num(val) {
-      return Number.isFinite(val) ? val : -Infinity;
-    }
-    if (sortKey === "kjAdj") {
-      return (num(getAdjustedKjForPicker(a)) - num(getAdjustedKjForPicker(b))) * dir;
-    }
-    if (sortKey === "if") {
-      return (num(a.ifValue) - num(b.ifValue)) * dir;
-    }
-    if (sortKey === "tss") {
-      return (num(a.tss) - num(b.tss)) * dir;
-    }
-    if (sortKey === "duration") {
-      return (num(a.durationMin) - num(b.durationMin)) * dir;
-    }
-    if (sortKey === "name") {
-      return a.name.localeCompare(b.name) * dir;
-    }
-    return 0;
-  });
-
-  return shown;
-}
-
-function refreshPickerCategoryFilter() {
-  if (!pickerCategoryFilter) return;
-
-  const valueBefore = pickerCategoryFilter.value;
-  const cats = Array.from(
-    new Set(pickerWorkouts.map((w) => w.category || "Uncategorized"))
-  ).sort((a, b) => a.localeCompare(b));
-
-  pickerCategoryFilter.innerHTML = "";
-  const optAll = document.createElement("option");
-  optAll.value = "";
-  optAll.textContent = "All categories";
-  pickerCategoryFilter.appendChild(optAll);
-
-  for (const c of cats) {
-    const opt = document.createElement("option");
-    opt.value = c;
-    opt.textContent = c;
-    pickerCategoryFilter.appendChild(opt);
-  }
-
-  if (cats.includes(valueBefore)) {
-    pickerCategoryFilter.value = valueBefore;
-  }
-}
-
-function updatePickerSortHeaderIndicator() {
-  const headers = pickerModal
-    ? pickerModal.querySelectorAll("th[data-sort-key]")
-    : [];
-  headers.forEach((th) => {
-    const key = th.getAttribute("data-sort-key");
-    th.classList.remove("sorted-asc", "sorted-desc");
-    if (key === pickerSortKey) {
-      th.classList.add(pickerSortDir === "asc" ? "sorted-asc" : "sorted-desc");
-    }
-  });
-}
-
-function renderMiniWorkoutGraph(container, workout) {
-  container.innerHTML = "";
-
-  const baseSegments = workout.segmentsForMetrics || [];
-  if (!baseSegments.length) {
-    container.textContent = "No workout structure available.";
-    container.classList.add("picker-detail-empty");
-    return;
-  }
-
-  // Use same FTP logic pattern as buildScaledSegments, but per workout
-  const ftp = currentFtp || workout.ftpAtSelection || DEFAULT_FTP;
-  const {scaledSegments: localScaledSegments, totalSec} = computeScaledSegments(baseSegments, ftp);
-
-  if (!localScaledSegments.length || totalSec <= 0) {
-    container.textContent = "No workout structure available.";
-    container.classList.add("picker-detail-empty");
-    return;
-  }
-
-  const width = 400;
-  const height = 120;
-
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.setAttribute("preserveAspectRatio", "none");
-  svg.classList.add("picker-graph-svg");
-
-  const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-  bg.setAttribute("x", "0");
-  bg.setAttribute("y", "0");
-  bg.setAttribute("width", width);
-  bg.setAttribute("height", height);
-  bg.setAttribute("fill", "transparent");
-  svg.appendChild(bg);
-
-  const maxY = Math.max(200, ftp * 2); // same as drawChart
-
-  // Reuse shared polygon renderer; segments are in the same shape as for drawChart
-  localScaledSegments.forEach((seg) => {
-    renderWorkoutSegmentPolygon({
-      svg,
-      seg,
-      totalSec,
-      width,
-      height,
-      ftp,
-      maxY,
-    });
-  });
-
-  const tooltip = document.createElement("div");
-  tooltip.className = "picker-tooltip";
-
-  container.appendChild(svg);
-  container.appendChild(tooltip);
-
-  attachSegmentHover(svg, tooltip, container);
-}
-
-
-function renderWorkoutPickerTable() {
-  if (!pickerWorkoutTbody) return;
-
-  const total = pickerWorkouts.length;
-
-  if (total === 0) {
-    pickerWorkoutTbody.innerHTML = "";
-    if (pickerSummaryEl) {
-      pickerSummaryEl.textContent = "No .zwo files found in this folder yet.";
-    }
-    updatePickerSortHeaderIndicator();
-    return;
-  }
-
-  const shown = computeVisiblePickerWorkouts();
-  const shownCount = shown.length;
-
-  pickerWorkoutTbody.innerHTML = "";
-
-  if (pickerSummaryEl) {
-    pickerSummaryEl.textContent = `${shownCount} of ${total} workouts shown`;
-  }
-
-  const colCount = 7;
-
-  for (const w of shown) {
-    const key = w.fileName || w.name;
-    const tr = document.createElement("tr");
-    tr.className = "picker-row";
-    tr.dataset.key = key;
-
-    const tdName = document.createElement("td");
-    tdName.textContent = w.name;
-    tdName.title = w.fileName;
-    tr.appendChild(tdName);
-
-    const tdCat = document.createElement("td");
-    tdCat.textContent = w.category || "Uncategorized";
-    tr.appendChild(tdCat);
-
-    const tdSource = document.createElement("td");
-    tdSource.textContent = w.source || "";
-    tr.appendChild(tdSource);
-
-    const tdIf = document.createElement("td");
-    tdIf.textContent = w.ifValue != null ? w.ifValue.toFixed(2) : "";
-    tr.appendChild(tdIf);
-
-    const tdTss = document.createElement("td");
-    tdTss.textContent = w.tss != null ? String(Math.round(w.tss)) : "";
-    tr.appendChild(tdTss);
-
-    const tdDur = document.createElement("td");
-    tdDur.textContent =
-      w.durationMin != null ? `${Math.round(w.durationMin)} min` : "";
-    tr.appendChild(tdDur);
-
-    const adjKj = getAdjustedKjForPicker(w);
-    const tdKj = document.createElement("td");
-    tdKj.textContent = adjKj != null ? `${Math.round(adjKj)} kJ` : "";
-    tr.appendChild(tdKj);
-
-    pickerWorkoutTbody.appendChild(tr);
-
-    const expanded = pickerExpandedKey === key;
-    if (expanded) {
-      const expTr = document.createElement("tr");
-      expTr.className = "picker-expanded-row";
-      const expTd = document.createElement("td");
-      expTd.colSpan = colCount;
-
-      const container = document.createElement("div");
-      container.className = "picker-expanded";
-
-      const graphDiv = document.createElement("div");
-      graphDiv.className = "picker-graph";
-
-      const detailDiv = document.createElement("div");
-      detailDiv.className = "picker-detail";
-
-      const headerRow = document.createElement("div");
-      headerRow.style.display = "flex";
-      headerRow.style.justifyContent = "flex-end";
-      headerRow.style.marginBottom = "4px";
-
-      const selectBtn = document.createElement("button");
-      selectBtn.type = "button";
-      selectBtn.className = "select-workout-btn";
-      selectBtn.textContent = "Select workout";
-      selectBtn.title = "Use this workout on the workout page.";
-      selectBtn.addEventListener("click", (evt) => {
-        evt.stopPropagation();
-        selectWorkoutFromPicker(w);
-      });
-
-      headerRow.appendChild(selectBtn);
-      detailDiv.appendChild(headerRow);
-
-      if (w.description && w.description.trim()) {
-        const descHtml = w.description.replace(/\n/g, "<br>");
-        const descContainer = document.createElement("div");
-        descContainer.innerHTML = descHtml;
-        detailDiv.appendChild(descContainer);
-      } else {
-        const empty = document.createElement("div");
-        empty.className = "picker-detail-empty";
-        empty.textContent = "(No description)";
-        detailDiv.appendChild(empty);
-      }
-
-      container.appendChild(graphDiv);
-      container.appendChild(detailDiv);
-      expTd.appendChild(container);
-      expTr.appendChild(expTd);
-      pickerWorkoutTbody.appendChild(expTr);
-
-      renderMiniWorkoutGraph(graphDiv, w);
-    }
-
-    tr.addEventListener("click", () => {
-      if (pickerExpandedKey === key) {
-        pickerExpandedKey = null;
-      } else {
-        pickerExpandedKey = key;
-      }
-      renderWorkoutPickerTable();
-    });
-  }
-
-  updatePickerSortHeaderIndicator();
-}
-
-function movePickerExpansion(delta) {
-  const shown = computeVisiblePickerWorkouts();
-  if (!shown.length) return;
-
-  let idx = shown.findIndex((w) => {
-    const key = w.fileName || w.name;
-    return key === pickerExpandedKey;
-  });
-
-  if (idx === -1) {
-    idx = delta > 0 ? 0 : shown.length - 1;
-  } else {
-    idx = (idx + delta + shown.length) % shown.length;
-  }
-
-  const next = shown[idx];
-  pickerExpandedKey = next.fileName || next.name;
-  renderWorkoutPickerTable();
-}
-
-function setupPickerSorting() {
-  if (!pickerModal) return;
-  const headerCells = pickerModal.querySelectorAll("th[data-sort-key]");
-  headerCells.forEach((th) => {
-    th.addEventListener("click", () => {
-      const key = th.getAttribute("data-sort-key");
-      if (!key) return;
-      if (pickerSortKey === key) {
-        pickerSortDir = pickerSortDir === "asc" ? "desc" : "asc";
-      } else {
-        pickerSortKey = key;
-        pickerSortDir = key === "kjAdj" ? "asc" : "desc";
-      }
-      renderWorkoutPickerTable();
-      persistPickerState();
-    });
-  });
-  updatePickerSortHeaderIndicator();
-}
-
-function setupPickerHotkeys() {
-  document.addEventListener("keydown", (e) => {
-    if (!isPickerOpen) return;
-
-    const tag = e.target?.tagName;
-    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-
-    const key = e.key;
-
-    // navigation
-    if (key === "ArrowDown" || key === "j" || key === "J") {
-      e.preventDefault();
-      return movePickerExpansion(+1);
-    }
-
-    if (key === "ArrowUp" || key === "k" || key === "K") {
-      e.preventDefault();
-      return movePickerExpansion(-1);
-    }
-  });
-}
-
-async function ensureZwoDirectoryHandle() {
-  if (!("showDirectoryPicker" in window)) {
-    alert("Selecting ZWO workouts requires a recent Chromium-based browser.");
-    return null;
-  }
-
-  if (!zwoDirHandle) {
-    try {
-      const stored = await loadZwoDirHandle();
-      if (stored) {
-        const ok = await ensureDirPermission(stored);
-        if (ok) {
-          zwoDirHandle = stored;
-          return zwoDirHandle;
-        }
-      }
-    } catch (err) {
-      logDebug("Failed to load ZWO dir handle: " + err);
-    }
-  }
-
-  if (!zwoDirHandle) {
-    try {
-      // NEW: show pre-select message before user sees the system picker
-      showZwoDirectoryPreselectMessage();
-
-      const handle = await window.showDirectoryPicker();
-      const ok = await ensureDirPermission(handle);
-      if (!ok) {
-        alert("Permission was not granted to the selected ZWO folder.");
-        return null;
-      }
-      zwoDirHandle = handle;
-      await saveZwoDirHandle(handle);
-    } catch (err) {
-      if (err && err.name === "AbortError") {
-        // user canceled
-        return null;
-      }
-      logDebug("Error choosing ZWO folder: " + err);
-      alert("Failed to choose ZWO folder.");
-      return null;
-    }
-  }
-
-  return zwoDirHandle;
-}
-
-async function rescanPickerWorkouts() {
-  if (!zwoDirHandle) {
-    pickerWorkouts = [];
-    renderWorkoutPickerTable();
-    return;
-  }
-
-  const ok = await ensureDirPermission(zwoDirHandle);
-  if (!ok) {
-    pickerWorkouts = [];
-    zwoDirHandle = null;
-    renderWorkoutPickerTable();
-    return;
-  }
-
-  pickerExpandedKey = null;
-  pickerWorkouts = await scanWorkoutsFromDirectory(zwoDirHandle);
-  refreshPickerCategoryFilter();
-
-  const saved = await loadPickerState();
-  if (saved) {
-    if (pickerSearchInput) {
-      pickerSearchInput.value = saved.searchTerm || "";
-    }
-    if (pickerCategoryFilter) {
-      pickerCategoryFilter.value = saved.category || "";
-    }
-    if (pickerDurationFilter) {
-      pickerDurationFilter.value = saved.duration || "";
-    }
-
-    if (saved.sortKey) {
-      pickerSortKey = saved.sortKey;
-    }
-    if (saved.sortDir === "asc" || saved.sortDir === "desc") {
-      pickerSortDir = saved.sortDir;
-    }
-  }
-
-  renderWorkoutPickerTable();
-}
-
-function selectWorkoutFromPicker(workoutMetaFull) {
-  // Payload format matches options.js -> workout.html expectations
-  const payload = {
-    name: workoutMetaFull.name,
-    fileName: workoutMetaFull.fileName,
-    totalSec: workoutMetaFull.totalSec,
-    segmentsForMetrics: workoutMetaFull.segmentsForMetrics || [],
-    ftpAtSelection: currentFtp,
-  };
-
-  try {
-    if (!chrome || !chrome.storage || !chrome.storage.local) {
-      alert("Selecting workouts requires the extension environment.");
-      return;
-    }
-  } catch {
-    alert("Selecting workouts requires the extension environment.");
-    return;
-  }
-
-  chrome.storage.local.set({[STORAGE_SELECTED_WORKOUT]: payload}, () => {
-    workoutMeta = payload;
-    const name = workoutMeta.name || "Selected workout";
-    workoutNameLabel.textContent = name;
-    workoutNameLabel.title = name;
-
-    currentFtp = workoutMeta.ftpAtSelection || currentFtp || DEFAULT_FTP;
-    ftpWorkoutValueEl.textContent = currentFtp;
-
-    buildScaledSegments();
-    elapsedSec = 0;
-    intervalElapsedSec = scaledSegments[0]?.durationSec || 0;
-    liveSamples = [];
-    zeroPowerSeconds = 0;
-    autoPauseDisabledUntilSec = 0;
-    updateStatsDisplay();
-    updatePlaybackButtons();
-    drawChart();
-    clearActiveState();
-
-    closeWorkoutPicker();
-  });
-}
-
-async function openWorkoutPicker() {
-  if (workoutRunning) {
-    alert("End the current workout before changing the workout selection.");
-    return;
-  }
-
-  const handle = await ensureZwoDirectoryHandle();
-  if (!handle) {
-    if (pickerSummaryEl) {
-      pickerSummaryEl.textContent = "No ZWO folder selected.";
-    }
-  } else {
-    await rescanPickerWorkouts();
-  }
-
-  isPickerOpen = true;
-  if (pickerOverlay) {
-    pickerOverlay.style.display = "flex";
-  }
-
-  if (pickerSearchInput) {
-    pickerSearchInput.focus();
-  }
-}
-
-function closeWorkoutPicker() {
-  isPickerOpen = false;
-  if (pickerOverlay) {
-    pickerOverlay.style.display = "none";
-  }
-}
-
 
 // --------------------------- FTP clickable / dialog ---------------------------
 
@@ -2179,11 +902,11 @@ async function handleFtpClick() {
   updateStatsDisplay();
   scheduleSaveActiveState();
 
-  try {
-    if (chrome && chrome.storage && chrome.storage.sync) {
-      chrome.storage.sync.set({ftp: currentFtp});
-    }
-  } catch {}
+  saveFtp(currentFtp);
+
+  if (picker) {
+    picker.syncFtpChanged();
+  }
 
   if (isBikeConnected) {
     sendTrainerState(true).catch((err) =>
@@ -2253,7 +976,6 @@ function updatePlaybackButtons() {
   }
 
   if (!workoutRunning) {
-    // no active workout
     if (mode === "workout" && workoutMeta) {
       startBtn.style.display = "";
     } else {
@@ -2410,19 +1132,18 @@ async function initPage() {
   logDebug("Workout page init…");
 
   initBleIntegration();
+  initSoundPreference();
 
   if (window.matchMedia) {
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = (_) => {
+    const handler = () => {
       rerenderThemeSensitive();
-      if (isPickerOpen) {
-        renderWorkoutPickerTable();
+      if (picker) {
+        picker.syncFtpChanged();
       }
     };
     if (mql.addEventListener) mql.addEventListener("change", handler);
   }
-
-  loadSoundPreference();
 
   try {
     workoutDirHandle = await loadWorkoutDirHandle();
@@ -2488,59 +1209,57 @@ async function initPage() {
   });
   applyModeUI();
 
-  // Workout name: always clickable to open picker
+  // Picker singleton
+  picker = getWorkoutPicker({
+    overlay: pickerOverlay,
+    modal: pickerModal,
+    closeBtn: pickerCloseBtn,
+    searchInput: pickerSearchInput,
+    categoryFilter: pickerCategoryFilter,
+    durationFilter: pickerDurationFilter,
+    summaryEl: pickerSummaryEl,
+    tbody: pickerWorkoutTbody,
+    getCurrentFtp: () => currentFtp,
+    onWorkoutSelected: (payload) => {
+      workoutMeta = payload;
+      const name = workoutMeta.name || "Selected workout";
+      workoutNameLabel.textContent = name;
+      workoutNameLabel.title = name;
+
+      currentFtp = workoutMeta.ftpAtSelection || currentFtp || DEFAULT_FTP;
+      ftpWorkoutValueEl.textContent = currentFtp;
+
+      buildScaledSegments();
+      elapsedSec = 0;
+      intervalElapsedSec = scaledSegments[0]?.durationSec || 0;
+      liveSamples = [];
+      zeroPowerSeconds = 0;
+      autoPauseDisabledUntilSec = 0;
+      updateStatsDisplay();
+      updatePlaybackButtons();
+      drawChart();
+      clearActiveState();
+    },
+    logDebug,
+  });
+
   if (workoutNameLabel) {
     workoutNameLabel.dataset.clickable = "true";
     workoutNameLabel.title = "Click to choose a workout.";
     workoutNameLabel.addEventListener("click", () => {
-      openWorkoutPicker().catch((err) => {
-        logDebug("Workout picker open error: " + err);
-      });
-    });
-  }
-
-  // Picker events
-  if (pickerCloseBtn) {
-    pickerCloseBtn.addEventListener("click", () => {
-      closeWorkoutPicker();
-    });
-  }
-
-  if (pickerOverlay) {
-    pickerOverlay.addEventListener("click", (e) => {
-      if (e.target === pickerOverlay) {
-        closeWorkoutPicker();
+      if (workoutRunning) {
+        alert("End the current workout before changing the workout selection.");
+        return;
       }
+
+      picker
+        .open()
+        .catch?.((err) => {
+          logDebug("Workout picker open error: " + err);
+        });
     });
   }
 
-  if (pickerSearchInput) {
-    pickerSearchInput.addEventListener("input", () => {
-      renderWorkoutPickerTable();
-      persistPickerState();
-    });
-  }
-
-  if (pickerCategoryFilter) {
-    pickerCategoryFilter.addEventListener("change", () => {
-      renderWorkoutPickerTable();
-      persistPickerState();
-    });
-  }
-
-  if (pickerDurationFilter) {
-    pickerDurationFilter.addEventListener("change", () => {
-      renderWorkoutPickerTable();
-      persistPickerState();
-    });
-  }
-
-
-  setupPickerSorting();
-  setupPickerHotkeys();
-
-
-  // FTP click handler (CSS handles hover/active)
   if (ftpInline) {
     ftpInline.addEventListener("click", handleFtpClick);
   }
@@ -2586,7 +1305,7 @@ async function initPage() {
   soundBtn.addEventListener("click", () => {
     soundEnabled = !soundEnabled;
     updateSoundIcon();
-    persistSoundPreference();
+    saveSoundPreference(soundEnabled);
   });
 
   if (modeToggle) {
@@ -2634,9 +1353,8 @@ async function initPage() {
     }
 
     if (e.key === "Escape") {
-      if (isPickerOpen) {
-        closeWorkoutPicker();
-        return;
+      if (picker) {
+        picker.close();
       }
       if (debugOverlay && debugOverlay.style.display !== "none") {
         debugOverlay.style.display = "none";
