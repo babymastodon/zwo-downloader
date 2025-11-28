@@ -51,7 +51,6 @@ const manualValueEl = document.getElementById("manualValue");
 
 const workoutControls = document.getElementById("workoutControls");
 const startBtn = document.getElementById("startBtn");
-const ftpInline = document.getElementById("ftpInline");
 const ftpWorkoutValueEl = document.getElementById("ftpWorkoutValue");
 const workoutNameLabel = document.getElementById("workoutNameLabel");
 
@@ -417,21 +416,18 @@ function applyModeUI(vm) {
     btn.classList.toggle("active", btn.dataset.mode === vm.mode);
   });
 
-  if (!manualControls || !ftpInline || !workoutNameLabel) return;
+  if (!manualControls || !workoutNameLabel) return;
 
   if (vm.mode === "erg") {
     manualControls.style.display = "inline-flex";
     manualValueEl.textContent = String(vm.manualErgTarget || 0);
-    ftpInline.style.display = "inline-flex";
     workoutNameLabel.style.display = "flex";
   } else if (vm.mode === "resistance") {
     manualControls.style.display = "inline-flex";
     manualValueEl.textContent = String(vm.manualResistance || 0);
-    ftpInline.style.display = "inline-flex";
     workoutNameLabel.style.display = "flex";
   } else {
     manualControls.style.display = "none";
-    ftpInline.style.display = "inline-flex";
     workoutNameLabel.style.display = "flex";
   }
 }
@@ -565,11 +561,6 @@ async function initPage() {
         .open()
         .catch((err) => logDebug("Workout picker open error: " + err));
     });
-  }
-
-  // FTP click
-  if (ftpInline) {
-    ftpInline.addEventListener("click", handleFtpClick);
   }
 
   // Connect buttons

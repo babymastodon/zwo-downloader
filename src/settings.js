@@ -255,9 +255,14 @@ function handleFtpSave() {
   if (clamped === vm.currentFtp) return;
 
   engine.setFtp(clamped);
-  saveFtp(clamped).catch?.((err) => {
-    console.error("[Settings] Failed to save FTP:", err);
-  });
+  try {
+    saveFtp(clamped);
+  } catch (err) {
+    console.error(
+      "[Settings] Failed to persist FTP to chrome.storage.sync:",
+      err
+    );
+  }
 }
 
 // --------------------------- Sound section ---------------------------
