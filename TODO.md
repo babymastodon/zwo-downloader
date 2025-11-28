@@ -8,7 +8,6 @@
 ## ⚙️ Workout Execution & Behavior
 - erg and resistance flows are not implemented
 - when workout ends, stop the timer, and continue showing target power, and also stop/save the workout
-- investigate stability of the timer (uses system clock instead of settimeout)
 
 ## 📄 File, Data, and Parsing
 - the workout history docs should also contain the zwo file (or at least the name and segments)
