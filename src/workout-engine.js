@@ -542,6 +542,11 @@ function createWorkoutEngine() {
 
     log("Workout engine init…");
 
+    BleManager.on("bikeSample", handleBikeSample);
+    BleManager.on("hrSample", handleHrSample);
+
+    BleManager.init({autoReconnect: true});
+
     const selected = await loadSelectedWorkout();
     if (selected) {
       workoutMeta = selected;

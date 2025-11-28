@@ -199,15 +199,6 @@ function initBleIntegration() {
     setHrStatus(status);
   });
 
-  // Samples go into the engine
-  BleManager.on("bikeSample", (sample) => {
-    engine && engine.handleBikeSample(sample);
-  });
-
-  BleManager.on("hrSample", (bpm) => {
-    engine && engine.handleHrSample(bpm);
-  });
-
   // HR battery is purely UI
   BleManager.on("hrBattery", (pct) => {
     hrBatteryPercent = pct;
@@ -215,8 +206,6 @@ function initBleIntegration() {
   });
 
   BleManager.on("log", logDebug);
-
-  BleManager.init({autoReconnect: true});
 }
 
 // --------------------------- Sound preference ---------------------------
