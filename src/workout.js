@@ -237,10 +237,20 @@ function updateChartDimensions() {
 // --------------------------- BLE integration (UI side) ---------------------------
 
 function setBikeStatus({state, message}) {
-  console.log("bike message", message)
   if (!bikeStatusDot) return;
+
+  // Tooltip only when we actually have a message
+  if (bikeConnectBtn) {
+    if (message) {
+      bikeConnectBtn.title = message;
+    } else {
+      bikeConnectBtn.removeAttribute("title");
+    }
+  }
+
   bikeStatusDot.classList.remove("connected", "connecting", "error");
 
+  const oldBikeConnected = bikeConnected;
   if (state === "connected") {
     bikeStatusDot.classList.add("connected");
     bikeConnected = true;
@@ -254,20 +264,34 @@ function setBikeStatus({state, message}) {
     bikeConnected = false;
   }
 
-  // Refresh chart/placeholder when bike status changes
-  if (engine) {
+  // Refresh chart/placeholder when bike connection status changes
+  if (engine && bikeConnected !== oldBikeConnected) {
     const vm = engine.getViewModel();
     drawChart(vm);
   }
 }
 
 function setHrStatus({state, message}) {
-  console.log("hr message", message)
   if (!hrStatusDot) return;
+
+  // Tooltip only when we actually have a message
+  if (hrConnectBtn) {
+    if (message) {
+      hrConnectBtn.title = message;
+    } else {
+      hrConnectBtn.removeAttribute("title");
+    }
+  }
+
   hrStatusDot.classList.remove("connected", "connecting", "error");
-  if (state === "connected") hrStatusDot.classList.add("connected");
-  else if (state === "connecting") hrStatusDot.classList.add("connecting");
-  else if (state === "error") hrStatusDot.classList.add("error");
+
+  if (state === "connected") {
+    hrStatusDot.classList.add("connected");
+  } else if (state === "connecting") {
+    hrStatusDot.classList.add("connecting");
+  } else if (state === "error") {
+    hrStatusDot.classList.add("error");
+  }
 }
 
 function updateHrBatteryLabel() {
