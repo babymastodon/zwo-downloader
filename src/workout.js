@@ -75,7 +75,6 @@ function logDebug(msg) {
   if (logLines.length > 5000) {
     logLines.splice(0, logLines.length - 5000);
   }
-  console.log("[Workout]", msg);
 
   // Forward to settings modal log view (selection-safe appends happen there)
   try {

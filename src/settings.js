@@ -22,7 +22,7 @@ import {
   saveFtp,
   loadWorkoutDirHandle,
   loadZwoDirHandle,
-  ensureWorkoutDir,          // selects / re-permissions history dir
+  pickWorkoutDir,          // selects / re-permissions history dir
   pickZwoDirectory,  // selects / re-permissions ZWO dir
 } from "./storage.js";
 
@@ -209,12 +209,12 @@ async function refreshDirectoryStatuses() {
 }
 
 async function handleChooseHistoryDir() {
-  if (typeof ensureWorkoutDir !== "function") {
+  if (typeof pickWorkoutDir !== "function") {
     alert("Folder selection is not available in this build.");
     return;
   }
   try {
-    const handle = await ensureWorkoutDir();
+    const handle = await pickWorkoutDir();
     if (!handle) return;
     await refreshDirectoryStatuses();
   } catch (err) {

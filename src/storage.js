@@ -252,39 +252,33 @@ export async function pickZwoDirectory() {
   }
 }
 
-export async function ensureWorkoutDir() {
+export async function pickWorkoutDir() {
   if (!("showDirectoryPicker" in window)) {
     alert("Saving workouts requires a recent Chromium-based browser.");
     return null;
   }
 
-  if (!workoutDirHandle) {
-    workoutDirHandle = await loadWorkoutDirHandle();
-  }
-
-  if (!workoutDirHandle) {
-    console.log("Prompting for workout directory…");
+  try {
+    // Always prompt the user
     const handle = await window.showDirectoryPicker();
+
     const ok = await ensureDirPermission(handle);
     if (!ok) {
       alert("Permission was not granted to the selected folder.");
       return null;
     }
+
     workoutDirHandle = handle;
     await saveWorkoutDirHandle(handle);
-  } else {
-    const ok = await ensureDirPermission(workoutDirHandle);
-    if (!ok) {
-      const handle = await window.showDirectoryPicker();
-      const ok2 = await ensureDirPermission(handle);
-      if (!ok2) {
-        alert("Permission was not granted to the selected folder.");
-        return null;
-      }
-      workoutDirHandle = handle;
-      await saveWorkoutDirHandle(handle);
-    }
-  }
-  return workoutDirHandle;
-}
 
+    return workoutDirHandle;
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      // user canceled
+      return null;
+    }
+    console.error("Error choosing workout folder: " + err);
+    alert("Failed to choose workout folder.");
+    return null;
+  }
+}

@@ -13,7 +13,7 @@ import {
   loadActiveState,
   saveActiveState,
   clearActiveState,
-  ensureWorkoutDir,
+  loadWorkoutDirHandle,
 } from "./storage.js";
 
 let instance = null;
@@ -164,7 +164,7 @@ function createWorkoutEngine() {
   async function saveWorkoutFile() {
     if (!workoutMeta || !liveSamples.length) return;
 
-    const dir = await ensureWorkoutDir();
+    const dir = await loadWorkoutDirHandle();
     if (!dir) return;
 
     const now = new Date();
