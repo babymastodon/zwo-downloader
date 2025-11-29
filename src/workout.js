@@ -18,7 +18,7 @@ import {
   drawWorkoutChart,
 } from "./workout-chart.js";
 
-import {DEFAULT_FTP} from "./workout-metrics.js";
+import {DEFAULT_FTP, getAdjustedKjForPicker} from "./workout-metrics.js";
 import {initSettings, addLogLineToSettings} from "./settings.js";
 
 // --------------------------- DOM refs ---------------------------
@@ -116,6 +116,7 @@ function formatTimeHHMMSS(sec) {
 function buildWorkoutTooltip(vm) {
   const meta = vm && vm.workoutMeta;
   if (!meta) return "";
+  const currentFtp = vm.currentFtp || meta.baseFtp || DEFAULT_FTP;
 
   const parts = [];
 
@@ -133,16 +134,19 @@ function buildWorkoutTooltip(vm) {
     parts.push(`Category: ${meta.category}`);
   }
 
-  if (meta.source) {
-    parts.push(`Source: ${meta.source}`);
-  }
-
-  if (typeof meta.if === "number") {
-    parts.push(`IF: ${meta.if.toFixed(2)}`);
+  if (typeof meta.ifValue === "number") {
+    parts.push(`IF: ${meta.ifValue.toFixed(2)}`);
   }
 
   if (typeof meta.tss === "number") {
     parts.push(`TSS: ${Math.round(meta.tss)}`);
+  }
+
+  parts.push(`FTP: ${Math.round(currentFtp)}`);
+
+  if (typeof meta.baseKj === "number" && typeof meta.ftpFromFile === "number") {
+    const kJ = getAdjustedKjForPicker(meta.baseKj, meta.ftpFromFile, currentFtp)
+    parts.push(`kJ: ${Math.round(kJ)}`);
   }
 
   if (meta.description) {
@@ -491,6 +495,7 @@ function drawChart(vm) {
     tooltipEl: chartTooltip,
     width: chartWidth,
     height: chartHeight,
+    mode: vm.mode,
     ftp: vm.currentFtp || DEFAULT_FTP,
     scaledSegments: vm.scaledSegments,
     totalSec: vm.workoutTotalSec,

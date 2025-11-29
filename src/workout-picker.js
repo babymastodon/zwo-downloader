@@ -134,8 +134,8 @@ function createWorkoutPicker(config) {
       const num = (val) => (Number.isFinite(val) ? val : -Infinity);
       if (sortKey === "kjAdj") {
         return (
-          num(getAdjustedKjForPicker(a, currentFtp)) -
-          num(getAdjustedKjForPicker(b, currentFtp))
+          num(getAdjustedKjForPicker(a.baseKj, a.ftpFromFile, currentFtp)) -
+          num(getAdjustedKjForPicker(b.baseKj, b.ftpFromFile, currentFtp))
         ) * dir;
       }
       if (sortKey === "if") {
@@ -254,7 +254,7 @@ function createWorkoutPicker(config) {
         w.durationMin != null ? `${Math.round(w.durationMin)} min` : "";
       tr.appendChild(tdDur);
 
-      const adjKj = getAdjustedKjForPicker(w, currentFtp);
+      const adjKj = getAdjustedKjForPicker(w.baseKj, w.ftpFromFile, currentFtp);
       const tdKj = document.createElement("td");
       tdKj.textContent = adjKj != null ? `${Math.round(adjKj)} kJ` : "";
       tr.appendChild(tdKj);
@@ -451,7 +451,11 @@ function createWorkoutPicker(config) {
       fileName: workoutMetaFull.fileName,
       totalSec: workoutMetaFull.totalSec,
       segmentsForMetrics: workoutMetaFull.segmentsForMetrics || [],
-      ftpAtSelection: getCurrentFtp(),
+      ftpFromFile: workoutMetaFull.ftpFromFile,
+      tss: workoutMetaFull.tss,
+      ifValue: workoutMetaFull.ifValue,
+      baseKj: workoutMetaFull.baseKj,
+      category: workoutMetaFull.category,
     };
 
     saveSelectedWorkout(payload);

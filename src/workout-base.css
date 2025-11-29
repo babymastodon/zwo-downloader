@@ -744,13 +744,13 @@ body {
 
 /* Bike bottom-left */
 .chart-empty-arrow--left {
-  left: 5%;
+  left: 3%;
   transform: none;
 }
 
 /* Workout bottom-right (mirrored) */
 .chart-empty-arrow--right {
-  right: 5%;
+  right: 3%;
   left: auto;
   transform: scaleX(-1);
 }

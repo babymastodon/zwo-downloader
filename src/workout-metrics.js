@@ -389,17 +389,16 @@ export function getDurationBucket(durationMin) {
 
 /**
  * Adjust kJ to the current FTP (used in picker list sorting).
- * workout: object returned from parseZwo
  */
-export function getAdjustedKjForPicker(workout, currentFtp) {
+export function getAdjustedKjForPicker(baseKj, baseFtp, currentFtp) {
   if (
-    workout.baseKj == null ||
-    !Number.isFinite(workout.ftpFromFile) ||
+    baseKj == null ||
+    !Number.isFinite(baseFtp) ||
     !Number.isFinite(currentFtp)
   ) {
-    return workout.baseKj;
+    return baseKj;
   }
-  if (workout.ftpFromFile <= 0) return workout.baseKj;
-  return workout.baseKj * (currentFtp / workout.ftpFromFile);
+  if (baseFtp <= 0) return workout.baseKj;
+  return baseKj * (currentFtp / baseFtp);
 }
 
