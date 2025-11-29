@@ -19,6 +19,7 @@ export const STORAGE_SELECTED_WORKOUT = "selectedWorkout";
 export const STORAGE_ACTIVE_STATE = "activeWorkoutState";
 export const STORAGE_SOUND_ENABLED = "soundEnabled";
 export const STORAGE_PICKER_STATE = "pickerState";
+export const STORAGE_WORKOUT_BUILDER_STATE = "workoutBuilderState";
 
 const FTP_KEY = "ftp";
 
@@ -205,6 +206,16 @@ export async function loadPickerState() {
 
 export function savePickerState(state) {
   return setSetting(STORAGE_PICKER_STATE, state);
+}
+
+// -------- Workout builder state persistence (stubs) --------
+
+export async function saveWorkoutBuilderState(state) {
+  return setSetting(STORAGE_WORKOUT_BUILDER_STATE, state);
+}
+
+export async function loadWorkoutBuilderState() {
+  return getSetting(STORAGE_WORKOUT_BUILDER_STATE, null);
 }
 
 // --------------------------- directory helpers ---------------------------

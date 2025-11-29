@@ -185,7 +185,9 @@
 
       <header class="workout-picker-header">
         <div class="workout-picker-header-main">
-          <div class="workout-picker-title">Workout library</div>
+          <div class="workout-picker-title" id="workoutPickerTitle">
+            Workout library
+          </div>
         </div>
 
         <div class="workout-picker-controls">
@@ -205,6 +207,16 @@
             <option value="210-240">210–240 min</option>
             <option value=">240">&gt; 4 hours</option>
           </select>
+          <button id="pickerAddWorkoutBtn" class="picker-add-btn" type="button">
+            + Add workout
+          </button>
+          <button id="workoutBuilderBackBtn" class="picker-back-btn" type="button" style="display:none;">
+            <svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;display:block;stroke-width:1.6;">
+              <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg>
+            <span>Back To Library</span>
+          </button>
           <button id="workoutPickerCloseBtn" class="picker-close-btn" title="Close">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M6 6l12 12M18 6L6 18" />
@@ -215,8 +227,18 @@
       </header>
 
       <div id="pickerSummary" class="workout-picker-summary"></div>
+      <div id="workoutBuilderRoot" class="workout-builder-root" style="display:none;"></div>
 
       <div class="workout-picker-table-wrapper">
+        <div id="pickerEmptyState" class="picker-empty-state" style="display:none;">
+          <div class="picker-empty-message">
+            No workouts found. Add your first workout.
+          </div>
+          <button id="pickerEmptyAddBtn" type="button" class="picker-empty-add-btn">
+            + Add workout
+          </button>
+        </div>
+
         <table class="workout-picker-table">
           <thead>
             <tr>

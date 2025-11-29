@@ -14,6 +14,8 @@ import {
   getAdjustedKjForPicker,
 } from "./workout-metrics.js";
 
+import {createWorkoutBuilder} from "./workout-builder.js";
+
 import {renderMiniWorkoutGraph} from "./workout-chart.js";
 
 import {
@@ -87,13 +89,26 @@ function createWorkoutPicker(config) {
     onWorkoutSelected,
   } = config;
 
-  // Internal state
+  const addWorkoutBtn = modal.querySelector("#pickerAddWorkoutBtn");
+  const builderBackBtn = modal.querySelector("#workoutBuilderBackBtn");
+  const builderRoot = modal.querySelector("#workoutBuilderRoot");
+  const emptyStateEl = modal.querySelector("#pickerEmptyState");
+  const emptyAddBtn = modal.querySelector("#pickerEmptyAddBtn");
+  const titleEl = modal.querySelector("#workoutPickerTitle");
+
   let pickerWorkouts = [];
   let pickerExpandedKey = null;
-  let pickerSortKey = "kjAdj"; // "if", "tss", "kjAdj", "duration", "name"
-  let pickerSortDir = "asc";   // "asc" | "desc"
+  let pickerSortKey = "kjAdj";
+  let pickerSortDir = "asc";
   let isPickerOpen = false;
+  let isBuilderMode = false;
 
+  const workoutBuilder =
+    builderRoot &&
+    createWorkoutBuilder({
+      rootEl: builderRoot,
+      getCurrentFtp,
+    });
 
   // --------------------------- filtering / sorting ---------------------------
 
@@ -199,12 +214,17 @@ function createWorkoutPicker(config) {
   function renderWorkoutPickerTable() {
     if (!tbody) return;
 
+    if (emptyStateEl) emptyStateEl.style.display = "none";
+
     const total = pickerWorkouts.length;
 
     if (total === 0) {
       tbody.innerHTML = "";
       if (summaryEl) {
         summaryEl.textContent = "No .zwo files found in this folder yet.";
+      }
+      if (!isBuilderMode && emptyStateEl) {
+        emptyStateEl.style.display = "flex";
       }
       updateSortHeaderIndicator();
       return;
@@ -327,6 +347,41 @@ function createWorkoutPicker(config) {
     }
 
     updateSortHeaderIndicator();
+  }
+
+  function enterBuilderMode() {
+    isBuilderMode = true;
+    if (builderRoot) builderRoot.style.display = "block";
+    if (titleEl) titleEl.textContent = "New Workout";
+
+    // Hide filters
+    if (searchInput) searchInput.style.display = "none";
+    if (categoryFilter) categoryFilter.style.display = "none";
+    if (durationFilter) durationFilter.style.display = "none";
+
+    // Header buttons
+    if (addWorkoutBtn) addWorkoutBtn.style.display = "none";
+    if (builderBackBtn) builderBackBtn.style.display = "inline-flex";
+
+    // Hide table/summary/footers via class + CSS
+    modal.classList.add("workout-picker-modal--builder");
+
+    if (emptyStateEl) emptyStateEl.style.display = "none";
+  }
+
+  function exitBuilderMode() {
+    isBuilderMode = false;
+    if (builderRoot) builderRoot.style.display = "none";
+    if (titleEl) titleEl.textContent = "Workout library";
+
+    if (searchInput) searchInput.style.display = "";
+    if (categoryFilter) categoryFilter.style.display = "";
+    if (durationFilter) durationFilter.style.display = "";
+
+    if (addWorkoutBtn) addWorkoutBtn.style.display = "inline-flex";
+    if (builderBackBtn) builderBackBtn.style.display = "none";
+
+    modal.classList.remove("workout-picker-modal--builder");
   }
 
   function movePickerExpansion(delta) {
@@ -466,6 +521,9 @@ function createWorkoutPicker(config) {
   // --------------------------- public API ---------------------------
 
   async function open() {
+    // Always start in library mode
+    exitBuilderMode();
+
     const handle = await loadZwoDirHandle();
     if (!handle) {
       if (summaryEl) {
@@ -477,7 +535,7 @@ function createWorkoutPicker(config) {
 
     isPickerOpen = true;
     if (overlay) overlay.style.display = "flex";
-    if (searchInput) searchInput.focus();
+    if (searchInput && !isBuilderMode) searchInput.focus();
   }
 
   function close() {
@@ -498,6 +556,26 @@ function createWorkoutPicker(config) {
 
   if (closeBtn) {
     closeBtn.addEventListener("click", () => close());
+  }
+  if (addWorkoutBtn) {
+    addWorkoutBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      enterBuilderMode();
+    });
+  }
+
+  if (builderBackBtn) {
+    builderBackBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      exitBuilderMode();
+    });
+  }
+
+  if (emptyAddBtn) {
+    emptyAddBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      enterBuilderMode();
+    });
   }
   if (overlay) {
     overlay.addEventListener("click", (e) => {

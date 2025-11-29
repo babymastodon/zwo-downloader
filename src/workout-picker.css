@@ -370,3 +370,430 @@
     justify-content: flex-start;
   }
 }
+
+/* --- Add / Back buttons in header --- */
+
+.picker-add-btn,
+.picker-back-btn {
+  height: var(--nav-control-height);
+  border-radius: var(--radius);
+  border: 1px solid var(--border-subtle);
+  background: #fbe4e2;
+  color: #7e2b24;
+  padding: 0 10px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+
+  .picker-add-btn,
+  .picker-back-btn {
+    background: #4b2220;
+    color: #ffd9d5;
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+}
+
+.picker-add-btn:hover,
+.picker-back-btn:hover {
+  background: #f6cbc7;
+}
+
+@media (prefers-color-scheme: dark) {
+
+  .picker-add-btn:hover,
+  .picker-back-btn:hover {
+    background: #5b2724;
+  }
+}
+
+/* --- Empty-state overlay --- */
+
+.picker-empty-state {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  background: radial-gradient(circle at top, rgba(255, 255, 255, 0.2), transparent 55%);
+  pointer-events: none;
+  text-align: center;
+  font-size: 14px;
+}
+
+.picker-empty-message {
+  color: var(--text-muted);
+}
+
+.picker-empty-add-btn {
+  pointer-events: auto;
+  border-radius: 4px;
+  border: none;
+  height: var(--nav-control-height);
+  padding: 0 14px;
+  font-size: 14px;
+  background: #d87d73;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.picker-empty-add-btn:hover {
+  background: #ac554c;
+}
+
+/* --- Add / Back buttons (match select-workout-btn) --- */
+
+.picker-add-btn,
+.picker-back-btn {
+  border: none;
+  border-radius: 4px;
+  height: var(--nav-control-height);
+  padding: 0 14px;
+  font-size: 14px;
+  cursor: pointer;
+  background: #d87d73;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+  flex-shrink: 0;
+}
+
+.picker-add-btn:hover,
+.picker-back-btn:hover {
+  background: #ac554c;
+}
+
+.picker-add-btn:active,
+.picker-back-btn:active {
+  transform: scale(0.97);
+  background: #9f4d45;
+}
+
+@media (prefers-color-scheme: dark) {
+
+  .picker-add-btn,
+  .picker-back-btn {
+    background: #bd4d45;
+  }
+
+  .picker-add-btn:hover,
+  .picker-back-btn:hover {
+    background: #93463e;
+  }
+
+  .picker-add-btn:active,
+  .picker-back-btn:active {
+    background: #883f38;
+  }
+}
+
+/* --- Builder layout & scrolling --- */
+
+.workout-builder-root {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.workout-builder {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.workout-builder-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 14px;
+}
+
+.workout-builder-col {
+  flex: 1 1 340px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+
+/* Cards */
+
+.wb-card {
+  border-radius: var(--radius);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.wb-meta-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wb-field-label {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.wb-field-input,
+.wb-field-textarea {
+  font-size: 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-subtle);
+  padding: 4px 6px;
+  background: var(--surface-elevated);
+  color: var(--text-main);
+  resize: vertical;
+}
+
+.wb-field-input:focus,
+.wb-field-textarea:focus {
+  outline: none;
+  border-color: var(--border);
+}
+
+/* Stats chips (match button padding / radius) */
+
+.wb-stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wb-stat-chip {
+  min-width: 80px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  padding: 4px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+
+.wb-stat-label {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.wb-stat-value {
+  font-size: 14px;
+}
+
+/* Chart */
+
+.wb-section-title {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.wb-chart-container {
+  width: 100%;
+}
+
+.wb-chart-mini-host {
+  width: 100%;
+}
+
+.wb-chart-mini-host svg {
+  width: 100%;
+  height: 140px;
+}
+
+/* Code toolbar & buttons (same vibe as other buttons) */
+
+.wb-code-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+
+.wb-code-toolbar-label {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.wb-code-toolbar-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.wb-code-insert-btn {
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  height: var(--nav-control-height);
+  padding: 0 10px;
+  font-size: 14px;
+  background: var(--surface-elevated);
+  color: var(--text-main);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wb-code-insert-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  .wb-code-insert-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+}
+
+/* Textarea + error */
+
+.wb-code-textarea-wrapper {
+  flex: 1;
+  min-height: 0;
+}
+
+.wb-code-textarea {
+  width: 100%;
+  min-height: 200px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-elevated);
+  color: var(--text-main);
+  padding: 6px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.wb-code-textarea.wb-has-error {
+  border-color: #d87d73;
+  box-shadow: 0 0 0 1px rgba(216, 125, 115, 0.35);
+}
+
+.wb-code-textarea:focus {
+  outline: none;
+  border-color: var(--border);
+}
+
+.wb-code-error-row {
+  display: flex;
+  gap: 6px;
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.wb-code-error-label {
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.wb-code-error-message {
+  font-size: 14px;
+}
+
+/* Error colors */
+.wb-code-error-message--neutral {
+  color: var(--text-muted);
+}
+
+.wb-code-error-message--ok {
+  color: #208c4f;
+}
+
+.wb-code-error-message--error {
+  color: #b23b33;
+}
+
+@media (prefers-color-scheme: dark) {
+  .wb-code-error-message--ok {
+    color: #6fdb9c;
+  }
+
+  .wb-code-error-message--error {
+    color: #ffb3ac;
+  }
+}
+
+/* URL section under code */
+
+.wb-url-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.wb-url-row {
+  display: flex;
+  gap: 6px;
+}
+
+.wb-url-input {
+  flex: 1;
+  min-width: 0;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-subtle);
+  padding: 4px 6px;
+  font-size: 14px;
+  background: var(--surface-elevated);
+  color: var(--text-main);
+}
+
+.wb-url-button {
+  flex-shrink: 0;
+  border-radius: 4px;
+  border: none;
+  height: var(--nav-control-height);
+  padding: 0 14px;
+  font-size: 14px;
+  background: #d87d73;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.wb-url-button:hover {
+  background: #ac554c;
+}
+
+/* When builder mode is active, hide table+footer (JS adds this class) */
+.workout-picker-modal.workout-picker-modal--builder .workout-picker-table-wrapper,
+.workout-picker-modal.workout-picker-modal--builder .picker-footer,
+.workout-picker-modal.workout-picker-modal--builder .workout-picker-summary {
+  display: none;
+}
+
+@media (max-width: 800px) {
+  .workout-builder-body {
+    flex-direction: column;
+  }
+}
