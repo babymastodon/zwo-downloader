@@ -1128,19 +1128,31 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
+      /* you can keep overflow: hidden here so only the inner view scrolls */
       overflow: hidden;
     }
 
-    .settings-main-view,
+    /* Main settings view scrolls when it needs to */
+    .settings-main-view {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow-y: auto;
+      /* <— key line */
+      padding-right: 4px;
+      /* optional, for scrollbar */
+    }
+
+    /* Same idea for logs if you want that view scrollable too */
     .settings-logs-view {
       flex: 1;
       min-height: 0;
       display: flex;
       flex-direction: column;
       gap: 8px;
-    }
-
-    .settings-logs-view {
+      overflow-y: auto;
       display: none;
     }
 
@@ -1422,7 +1434,7 @@
 
     .settings-help-content {
       font-size: 13px;
-      color: var(--text-muted);
+      color: var(--text-main);
       margin-top: 6px;
       padding: 8px 10px;
       border-left: 3px solid var(--border);

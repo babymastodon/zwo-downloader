@@ -63,7 +63,6 @@ const soundCheckbox = document.getElementById("settingsSoundCheckbox");
 
 // Environment status
 const btStatusText = document.getElementById("settingsBtStatusText");
-const btStatusCta = document.getElementById("settingsBtStatusCta");
 
 // Help / user-guide toggles
 const helpToggleButtons = Array.from(
@@ -311,10 +310,6 @@ function refreshEnvironmentStatus() {
     btStatusText.classList.toggle("settings-status-missing", !hasBt);
   }
 
-  if (btStatusCta) {
-    btStatusCta.style.display = hasBt ? "none" : "";
-  }
-
   if (!hasBt) {
     startupNeedsAttention.missingBtSupport = true;
   }
@@ -345,6 +340,24 @@ function updateAttentionBanner() {
 }
 
 // --------------------------- Help / user-guide toggles ---------------------------
+
+// Helper to force a specific help section visible (used on startup issues)
+function showHelpSectionById(targetId) {
+  if (!targetId) return;
+  const el = document.getElementById(targetId);
+  if (!el) return;
+
+  const wasHidden = el.hasAttribute("hidden");
+  if (wasHidden) {
+    el.removeAttribute("hidden");
+  }
+
+  // Replay the CSS transition used in initHelpToggles
+  el.classList.remove("settings-help-content--visible");
+  // eslint-disable-next-line no-unused-expressions
+  el.offsetWidth;
+  el.classList.add("settings-help-content--visible");
+}
 
 function initHelpToggles() {
   if (!helpToggleButtons.length) return;
@@ -492,14 +505,28 @@ export async function initSettings() {
   refreshEnvironmentStatus();
   updateAttentionBanner();
 
-  // Auto-open settings if we detect critical missing configuration
-  const shouldAutoOpen =
+  const shouldShowFileHelp =
     startupNeedsAttention.missingHistoryDir ||
-    startupNeedsAttention.missingZwoDir ||
-    startupNeedsAttention.missingBtSupport;
+    startupNeedsAttention.missingZwoDir;
+  const shouldShowBtHelp = startupNeedsAttention.missingBtSupport;
+
+  // Auto-open settings if we detect critical missing configuration
+  const shouldAutoOpen = shouldShowFileHelp || shouldShowBtHelp;
 
   if (shouldAutoOpen) {
     openSettings();
+
+    // If file dirs are missing, open file help by default
+    // (expects a help section with ID "settingsFoldersHelp" in the DOM)
+    if (shouldShowFileHelp) {
+      showHelpSectionById("settingsFoldersHelp");
+    }
+
+    // If Bluetooth support is missing, open Bluetooth help by default
+    // (expects a help section with ID "settingsEnvHelp" in the DOM)
+    if (shouldShowBtHelp) {
+      showHelpSectionById("settingsEnvHelp");
+    }
   }
 }
 
