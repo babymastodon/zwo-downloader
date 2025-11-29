@@ -33,6 +33,7 @@ const statCadenceEl = document.getElementById("stat-cadence");
 const chartSvg = document.getElementById("chartSvg");
 const chartPanel = document.getElementById("chartPanel");
 const chartTooltip = document.getElementById("chartTooltip");
+const noBikeOverlay = document.getElementById("noBikeOverlay");
 
 const bikeConnectBtn = document.getElementById("bikeConnectBtn");
 const bikeStatusDot = document.getElementById("bikeStatusDot");
@@ -57,6 +58,9 @@ const workoutNameLabel = document.getElementById("workoutNameLabel");
 // --------------------------- UI-local state ---------------------------
 
 let hrBatteryPercent = null;
+
+// Track whether a bike is currently connected (via BLE status)
+let bikeConnected = false;
 
 const logLines = [];
 let chartWidth = 1000;
@@ -144,9 +148,25 @@ function updateChartDimensions() {
 function setBikeStatus(state) {
   if (!bikeStatusDot) return;
   bikeStatusDot.classList.remove("connected", "connecting", "error");
-  if (state === "connected") bikeStatusDot.classList.add("connected");
-  else if (state === "connecting") bikeStatusDot.classList.add("connecting");
-  else if (state === "error") bikeStatusDot.classList.add("error");
+
+  if (state === "connected") {
+    bikeStatusDot.classList.add("connected");
+    bikeConnected = true;
+  } else if (state === "connecting") {
+    bikeStatusDot.classList.add("connecting");
+    bikeConnected = false;
+  } else if (state === "error") {
+    bikeStatusDot.classList.add("error");
+    bikeConnected = false;
+  } else {
+    bikeConnected = false;
+  }
+
+  // Refresh chart/placeholder when bike status changes
+  if (engine) {
+    const vm = engine.getViewModel();
+    drawChart(vm);
+  }
 }
 
 function setHrStatus(state) {
@@ -300,6 +320,31 @@ function updateStatsDisplay(vm) {
 
 function drawChart(vm) {
   if (!chartSvg || !chartPanel) return;
+
+  // Empty state when no bike is connected: big message + hand-drawn arrow.
+  if (!bikeConnected) {
+    if (noBikeOverlay) {
+      noBikeOverlay.style.display = "flex";
+    }
+    chartSvg.style.visibility = "hidden";
+
+    // Clear any existing SVG content
+    while (chartSvg.firstChild) {
+      chartSvg.removeChild(chartSvg.firstChild);
+    }
+
+    if (chartTooltip) {
+      chartTooltip.style.display = "none";
+    }
+    return;
+  }
+
+  // Bike is connected → render chart as usual.
+  if (noBikeOverlay) {
+    noBikeOverlay.style.display = "none";
+  }
+  chartSvg.style.visibility = "visible";
+
   updateChartDimensions();
 
   drawWorkoutChart({
@@ -432,7 +477,6 @@ function applyModeUI(vm) {
     }
 
     workoutNameLabel.style.display = "flex";
-
   } else if (vm.mode === "resistance") {
     manualControls.style.display = "inline-flex";
 
@@ -445,7 +489,6 @@ function applyModeUI(vm) {
     }
 
     workoutNameLabel.style.display = "flex";
-
   } else {
     manualControls.style.display = "none";
     workoutNameLabel.style.display = "flex";
@@ -498,13 +541,9 @@ function handleManualInputSave() {
 }
 
 // --------------------------- Status overlay (countdown / paused / resumed) ---------------------------
-//
-// Engine is responsible for actually showing/hiding the overlay via Beeper,
-// but this helper is here if we ever want to tweak styles from UI.
-// Leaving placeholder wiring in case engine emits events later.
+
 function updateStatusOverlay(_vm) {
   // Currently driven from Beeper; no-op from UI side for now.
-  // Kept for future: could react to vm.workoutPaused / starting countdown, etc.
   void _vm;
 }
 
@@ -518,7 +557,7 @@ function renderFromEngine(vm) {
       workoutNameLabel.textContent = name;
       workoutNameLabel.title = name;
     } else {
-      workoutNameLabel.textContent = "No workout selected";
+      workoutNameLabel.textContent = "Click here to select a workout";
       workoutNameLabel.title = "";
     }
   }

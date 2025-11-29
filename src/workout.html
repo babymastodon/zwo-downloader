@@ -1518,6 +1518,45 @@
       padding-left: 4px;
     }
 
+    .chart-empty-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      pointer-events: none;
+      container-type: inline-size;
+    }
+
+    .chart-empty-message {
+      font-size: clamp(1.6rem, 8cqh, 10cqw);
+      /* larger + responsive */
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      max-width: 60%;
+    }
+
+    .chart-empty-arrow {
+      position: absolute;
+      left: 5%;
+      bottom: 0px;
+      width: auto;
+      height: 50%;
+    }
+
+    .chart-empty-arrow-main {
+      fill: none;
+      stroke: var(--text-muted);
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
   </style>
 </head>
 
@@ -1551,9 +1590,34 @@
     </section>
 
     <section id="chartPanel" class="chart-panel" aria-label="Workout profile and live data">
+      <!-- Empty-state overlay when no bike is connected -->
+      <div id="noBikeOverlay" class="chart-empty-state">
+        <div class="chart-empty-message">
+          Connect your bike
+        </div>
+
+        <!-- Hand-drawn-style curved arrow pointing toward the bottom-left (Bike button area) -->
+        <svg class="chart-empty-arrow" viewBox="0 0 52.916665 52.916666" preserveAspectRatio="none" aria-hidden="true">
+          <g>
+            <path class="chart-empty-arrow-main" d="M 51.472993,14.207927
+         C 46.120999,17.671066 40.269075,17.583209 34.622628,17.157855
+           29.288422,16.788704 23.874176,16.262741 18.609072,18.089194
+           14.872863,19.770591 12.035953,24.626821 9.8229085,29.694766
+           7.5506784,35.257104 6.0236691,40.53837 4.6810022,46.394288" />
+
+            <path class="chart-empty-arrow-main" d="m 2.9466055,41.671853
+         c 0.066234,0.595617 0.2291127,1.842722 0.2430367,2.548134
+           0.1721301,1.129681 -0.047682,2.299663 0.8821012,3.521698
+           1.0543304,-0.189198 1.9004822,-1.093461 2.8846226,-1.547496
+           0.804207,-0.437777 0.8540386,-0.58115 1.6908182,-0.913426" />
+          </g>
+        </svg>
+      </div>
+
       <svg id="chartSvg" viewBox="0 0 1000 400" preserveAspectRatio="none"></svg>
       <div id="chartTooltip" class="chart-tooltip"></div>
     </section>
+
   </div>
 
   <!-- Bottom nav -->
