@@ -523,12 +523,23 @@
 }
 
 .workout-builder-col {
-  flex: 1 1 340px;
+  flex: 1 1 500px;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
   font-size: 14px;
+}
+
+@media (max-width: 500px) {
+  .workout-builder-body {
+    flex-direction: column;
+    flex-wrap: nowrap;
+  }
+
+  .workout-builder-col {
+    flex: 1 1 100%;
+  }
 }
 
 /* Cards */
@@ -660,6 +671,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
+}
+
+.wb-code-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 
 .wb-code-insert-btn:hover {
@@ -790,10 +808,4 @@
 .workout-picker-modal.workout-picker-modal--builder .picker-footer,
 .workout-picker-modal.workout-picker-modal--builder .workout-picker-summary {
   display: none;
-}
-
-@media (max-width: 800px) {
-  .workout-builder-body {
-    flex-direction: column;
-  }
 }

@@ -120,7 +120,7 @@ export function createWorkoutBuilder(options) {
 
   const toolbarLabel = document.createElement("div");
   toolbarLabel.className = "wb-code-toolbar-label";
-  toolbarLabel.textContent = "ZWO workout elements";
+  toolbarLabel.textContent = "Blocks";
 
   const toolbarButtons = document.createElement("div");
   toolbarButtons.className = "wb-code-toolbar-buttons";
@@ -130,24 +130,28 @@ export function createWorkoutBuilder(options) {
       key: "steady",
       label: "SteadyState",
       snippet: '<SteadyState Duration="300" Power="0.75" />',
+      icon: "steady",
     },
     {
       key: "warmup",
       label: "Warmup",
       snippet:
         '<Warmup Duration="600" PowerLow="0.50" PowerHigh="0.75" />',
+      icon: "rampUp",
     },
     {
       key: "cooldown",
       label: "Cooldown",
       snippet:
         '<Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50" />',
+      icon: "rampDown",
     },
     {
       key: "intervals",
       label: "IntervalsT",
       snippet:
         '<IntervalsT Repeat="3" OnDuration="300" OffDuration="180" OnPower="0.90" OffPower="0.50" />',
+      icon: "intervals",
     },
   ];
 
@@ -156,11 +160,22 @@ export function createWorkoutBuilder(options) {
     btn.type = "button";
     btn.className = "wb-code-insert-btn";
     btn.dataset.key = spec.key;
-    btn.textContent = spec.label;
+
+    // Icon + label
+    if (spec.icon) {
+      const iconEl = createWorkoutElementIcon(spec.icon);
+      btn.appendChild(iconEl);
+    }
+
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = spec.label;
+    btn.appendChild(labelSpan);
+
     btn.addEventListener("click", () => {
       insertSnippetAtCursor(codeTextarea, spec.snippet);
       handleAnyChange();
     });
+
     toolbarButtons.appendChild(btn);
   });
 
@@ -718,6 +733,46 @@ export function createWorkoutBuilder(options) {
   }
 
   // ---------- Small DOM helpers ----------
+
+  function createWorkoutElementIcon(kind) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    svg.classList.add("wb-code-icon");
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-width", "1.8");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+
+    switch (kind) {
+      case "steady":
+        // Flat block / interval
+        path.setAttribute("d", "M4 16h14v-6H4z");
+        break;
+      case "rampUp":
+        // Warmup: rising ramp
+        path.setAttribute("d", "M4 16L10 10l6-6M4 16h16");
+        break;
+      case "rampDown":
+        // Cooldown: descending ramp
+        path.setAttribute("d", "M4 4l6 6 6 6M4 16h16");
+        break;
+      case "intervals":
+      default:
+        // Repeated on/off blocks
+        path.setAttribute(
+          "d",
+          "M4 16h3v-6H4zm5 6h3v-12H9zm5-4h3v-8h-3z"
+        );
+        break;
+    }
+
+    svg.appendChild(path);
+    return svg;
+  }
 
   function createLabeledInput(labelText) {
     const wrapper = document.createElement("div");
