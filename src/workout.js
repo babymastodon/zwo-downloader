@@ -463,7 +463,7 @@ function setChartEmptyState(kind) {
     chartEmptyArrow.classList.add("chart-empty-arrow--right");
 
   } else if (kind === "readyToStart") {
-    chartEmptyMessage.textContent = "Pedal to begin or press start";
+    chartEmptyMessage.textContent = "Pedal to begin or click start";
     chartEmptyArrow.classList.add("chart-empty-arrow--right");
 
   } else if (kind === "resume") {

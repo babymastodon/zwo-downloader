@@ -52,7 +52,7 @@ Open a supported workout page, click the extension icon, and it will:
 ### Ride it
 
 Open the workout runner page from the extension menu.
-Choose a `.zwo` from your library, connect your trainer and HR strap, set your FTP, and press **Start**.
+Choose a `.zwo` from your library, connect your trainer and HR strap, set your FTP, and click **Start**.
 A countdown begins, ERG targets are applied, and the chart + metrics update in real time.
 When finished, a JSON file with your entire ride is written to your history folder.
 
