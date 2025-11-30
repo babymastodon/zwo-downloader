@@ -1,139 +1,134 @@
-// background.js (Manifest V3 service worker)
+// background.js (Manifest V3 service worker for VeloDrive - ES module)
 
-const DB_NAME = "zwo-downloader";
-const DB_VERSION = 1;
+import {
+  saveLastScrapedWorkout,
+  markLastScrapeJustScraped,
+} from "./storage.js";
 
-// ---- IndexedDB helpers (same DB/settings store as options.js) ----
+// ---------------- Helpers ----------------
 
-function getDb() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (ev) => {
-      const db = ev.target.result;
-      if (!db.objectStoreNames.contains("settings")) {
-        db.createObjectStore("settings", {keyPath: "key"});
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+async function saveScrapeResult(scrape) {
+  const payload = {
+    ...scrape,
+    scrapedAt: new Date().toISOString(),
+  };
+
+  // Save full payload including `success` flag
+  await saveLastScrapedWorkout(payload);
+  await markLastScrapeJustScraped(true);
 }
 
-async function loadDirectoryHandle() {
-  const db = await getDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("settings", "readonly");
-    const store = tx.objectStore("settings");
-    const req = store.get("dirHandle");
-    req.onsuccess = () => {
-      resolve(req.result ? req.result.handle : null);
-    };
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function ensureDirPermission(handle) {
-  if (!handle) return false;
-  if (!handle.queryPermission || !handle.requestPermission) return true;
-
-  const current = await handle.queryPermission({mode: "readwrite"});
-  if (current === "granted") return true;
-  if (current === "denied") return false;
-
-  const result = await handle.requestPermission({mode: "readwrite"});
-  return result === "granted";
-}
-
-// Save the XML into the selected directory as a file
-async function saveZwoToDirectory(filename, xmlText) {
-  const dirHandle = await loadDirectoryHandle();
-  if (!dirHandle) {
-    return {ok: false, reason: "noDir"};
-  }
-
-  const permitted = await ensureDirPermission(dirHandle);
-  if (!permitted) {
-    return {ok: false, reason: "noPermission"};
-  }
-
-  try {
-    // Create or overwrite the file
-    const fileHandle = await dirHandle.getFileHandle(filename, {create: true});
-    const writable = await fileHandle.createWritable();
-    await writable.write(xmlText);
-    await writable.close();
-    return {ok: true, reason: null};
-  } catch (err) {
-    console.warn("[ZWO background] Failed to write file:", err);
-    return {ok: false, reason: "writeError"};
+function openOptionsPage() {
+  if (chrome.runtime.openOptionsPage) {
+    chrome.runtime.openOptionsPage();
+  } else if (chrome.tabs && chrome.runtime.getURL) {
+    chrome.tabs.create({url: chrome.runtime.getURL("workout.html")});
   }
 }
 
-// ---- Handle messages from content scripts ----
+// ---------------- Lifecycle events ----------------
 
-chrome.runtime.onMessage.addListener((msg, _, sendResponse) => {
-  if (!msg || typeof msg !== "object") return;
-
-  if (msg.type === "TR2ZWO_SAVE_TO_DIR") {
-    // Asynchronous response
-    (async () => {
-      const {filename, xml} = msg;
-      if (!filename || !xml) {
-        // Include new result fields expected by the content script
-        sendResponse({
-          ok: false,
-          mode: "directory",
-          reason: "missingData"
-        });
-        return;
-      }
-      const result = await saveZwoToDirectory(filename, xml);
-
-      // Always return the extended shape:
-      // { ok: boolean, mode: "directory", reason: string|null }
-      sendResponse({
-        ok: !!result.ok,
-        mode: "directory",
-        reason:
-          typeof result.reason === "string" && result.reason.length
-            ? result.reason
-            : null
-      });
-    })();
-    return true; // keep the message channel open for async sendResponse
-  }
-});
-
-// ---- Open options page after install ----
-
+// On install: open options page
 chrome.runtime.onInstalled.addListener((details) => {
   if (details && details.reason === "install") {
-    if (chrome.runtime.openOptionsPage) {
-      chrome.runtime.openOptionsPage();
-    } else if (chrome.tabs && chrome.runtime.getURL) {
-      chrome.tabs.create({url: chrome.runtime.getURL("workout.html")});
-    }
+    openOptionsPage();
   }
 });
 
-// ---- Toolbar icon click → trigger download on active tab ----
-
+// Toolbar icon click:
+// - If NOT one of the 3 supported sites → open options.
+// - If it IS supported → ask content script to scrape.
+//   Content script will send VD_SCRAPE_RESULT; we save it, then:
+//     * if success: open options
+//     * if failure: show dialog in page asking if they still want to open
 chrome.action.onClicked.addListener((tab) => {
-  if (!tab || !tab.id) return;
+  if (!tab || !tab.id || !tab.url) {
+    openOptionsPage();
+    return;
+  }
 
-  // Tell the content script in this tab to generate + download the ZWO
-  chrome.tabs.sendMessage(
-    tab.id,
-    {type: "TR2ZWO_DOWNLOAD"},
-    () => {
-      // Ignore errors when no content script is present
-      if (chrome.runtime.lastError) {
-        console.warn(
-          "[TR2ZWO] Could not send TR2ZWO_DOWNLOAD:",
-          chrome.runtime.lastError.message
-        );
+  let urlObj;
+  try {
+    urlObj = new URL(tab.url);
+  } catch {
+    openOptionsPage();
+    return;
+  }
+
+  const host = urlObj.host || "";
+  const isSupported =
+    host.includes("trainerroad.com") ||
+    host.includes("trainerday.com") ||
+    host.includes("whatsonzwift.com");
+
+  if (!isSupported) {
+    // Any other site → just open options
+    openOptionsPage();
+    return;
+  }
+
+  // Supported site: ask the content script to scrape this workout page.
+  // Fire-and-forget: we don't use a callback, so Chrome won't complain about
+  // "message port closed before a response was received".
+  chrome.tabs.sendMessage(tab.id, {type: "VD_SCRAPE_WORKOUT"});
+});
+
+// ---------------- Message handling ----------------
+
+chrome.runtime.onMessage.addListener((msg, sender, _sendResponse) => {
+  if (!msg || typeof msg !== "object") return;
+
+  if (msg.type === "VD_SCRAPE_RESULT" && msg.payload) {
+    const payload = msg.payload;
+    const tabId = sender && sender.tab && sender.tab.id;
+
+    (async () => {
+      try {
+        // Always record the attempt (success or failure)
+        await saveScrapeResult(payload);
+      } catch (err) {
+        console.error("[VeloDrive] Failed to save scrape result:", err);
       }
-    }
-  );
+
+      // If scrape succeeded, just open VeloDrive.
+      if (payload.success) {
+        openOptionsPage();
+        return;
+      }
+
+      // Scrape failed on a supported site: show dialog with error and
+      // ask if they still want to open VeloDrive.
+      if (!tabId) {
+        // No tab to show a dialog on; just open options as a fallback.
+        openOptionsPage();
+        return;
+      }
+
+      chrome.tabs.sendMessage(
+        tabId,
+        {
+          type: "VD_SCRAPE_FAILED_PROMPT",
+          error: payload.error || "",
+          source: payload.source || "",
+        },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            console.warn(
+              "[VeloDrive] Could not show failure prompt:",
+              chrome.runtime.lastError.message
+            );
+            // If we can't show a prompt, safest is to just open VeloDrive.
+            openOptionsPage();
+            return;
+          }
+
+          if (response && response.openOptions) {
+            openOptionsPage();
+          }
+          // If user chose "Cancel" or no response, do nothing.
+        }
+      );
+    })();
+  }
 });
 

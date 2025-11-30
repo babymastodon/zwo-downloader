@@ -23,6 +23,8 @@ export const STORAGE_ACTIVE_STATE = "activeWorkoutState";
 export const STORAGE_SOUND_ENABLED = "soundEnabled";
 export const STORAGE_PICKER_STATE = "pickerState";
 export const STORAGE_WORKOUT_BUILDER_STATE = "workoutBuilderState";
+export const STORAGE_LAST_SCRAPED_WORKOUT = "lastScrapedWorkout";
+export const STORAGE_LAST_SCRAPED_FLAG = "lastScrapedWorkoutJustScraped";
 
 const FTP_KEY = "ftp";
 
@@ -206,6 +208,41 @@ export async function loadTrashDirHandle() {
   trashDirHandle = handle || null;
   return trashDirHandle;
 }
+
+// --------------------------- Scrape result helpers ---------------------------
+
+export async function loadLastScrapedWorkout() {
+  // Shape (as saved by background.js):
+  // {
+  //   success: boolean,
+  //   source: string,
+  //   sourceURL: string,
+  //   workoutTitle: string,
+  //   rawSegments: any,
+  //   description: string,
+  //   scrapedAt: string (ISO timestamp),
+  //   error?: string
+  // }
+  return getSetting(STORAGE_LAST_SCRAPED_WORKOUT, null);
+}
+
+export function saveLastScrapedWorkout(payload) {
+  return setSetting(STORAGE_LAST_SCRAPED_WORKOUT, payload);
+}
+
+export function markLastScrapeJustScraped(value) {
+  return setSetting(STORAGE_LAST_SCRAPED_FLAG, !!value);
+}
+
+export async function wasWorkoutJustScraped() {
+  return getSetting(STORAGE_LAST_SCRAPED_FLAG, false);
+}
+
+export function clearJustScrapedFlag() {
+  // Call this from workout.html once you've consumed the latest scrape.
+  return setSetting(STORAGE_LAST_SCRAPED_FLAG, false);
+}
+
 
 // --------------------------- Permission helper ---------------------------
 

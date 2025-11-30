@@ -20,6 +20,7 @@ import {
 
 import {DEFAULT_FTP, getAdjustedKjForPicker} from "./workout-metrics.js";
 import {initSettings, addLogLineToSettings} from "./settings.js";
+import {loadLastScrapedWorkout} from "./storage.js";
 
 // --------------------------- DOM refs ---------------------------
 
@@ -880,6 +881,7 @@ async function initPage() {
     drawChart(currentVm);
   });
 
+  console.log("last scrape", await loadLastScrapedWorkout());
   logDebug("Workout page ready.");
 }
 

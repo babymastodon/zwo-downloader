@@ -149,7 +149,7 @@ export function createWorkoutBuilder(options) {
 
   const urlTitle = document.createElement("div");
   urlTitle.className = "wb-section-title";
-  urlTitle.innerHTML = `Import from URL - <a href="https://app.trainerday.com/search" target="_blank" rel="noopener noreferrer">TrainerDay</a> or <a href="https://whatsonzwift.com/workouts" target="_blank" rel="noopener noreferrer">WhatsOnZwift</a>`;
+  urlTitle.innerHTML = `Import from URL - <a href="https://whatsonzwift.com/workouts" target="_blank" rel="noopener noreferrer">WhatsOnZwift</a> or <a href="https://app.trainerday.com/search" target="_blank" rel="noopener noreferrer">TrainerDay</a>`;
 
   const urlRow = document.createElement("div");
   urlRow.className = "wb-url-row";
