@@ -381,21 +381,16 @@
             </div>
 
             <div id="settingsFoldersHelp" class="settings-help-content" hidden>
-              VeloDrive now uses a <strong>single folder</strong> for all of its data.
+              VeloDrive will store all of your data on your local filesystem:
+
+              You only need to the choose the top-level folder, such as <code>~/Documents/velodrive</code>.
+
               Inside the folder you choose, VeloDrive automatically creates:
-              <ul>
-                <li><strong>workouts/</strong> – your <code>.zwo</code> workout files.</li>
-                <li><strong>history/</strong> – exported <code>.fit</code> files from completed workouts.</li>
-                <li><strong>trash/</strong> – items you delete from the workout library.</li>
-              </ul>
-              A good starting layout is:
               <pre>
-  ~/Documents/VeloDrive/
+  ~/Documents/velodrive/
   ├── workouts/   ← your .zwo workout files
   ├── history/    ← completed workout .fit files
   └── trash/      ← deleted workouts</pre>
-              You only need to pick this folder once. VeloDrive will manage the
-              <code>workouts</code>, <code>history</code>, and <code>trash</code> folders inside it.
             </div>
 
 
@@ -442,8 +437,7 @@
               FTP is your sustainable power for roughly a 1-hour effort. VeloDrive uses it to:
               <ul>
                 <li>Convert relative workout segments (%FTP) into watts.</li>
-                <li>Estimate IF (intensity factor), TSS, and energy.</li>
-                <li>Colour-code zones in the workout chart and HUD.</li>
+                <li>Calculate energy (kJ) consumed per workout.</li>
               </ul>
               If you’re unsure, start with a rough guess (e.g. last known FTP or outdoor 20–30 minute best power × 0.95)
               and adjust over time.

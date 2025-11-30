@@ -20,7 +20,11 @@ import {
 
 import {DEFAULT_FTP, getAdjustedKjForPicker} from "./workout-metrics.js";
 import {initSettings, addLogLineToSettings} from "./settings.js";
-import {loadLastScrapedWorkout} from "./storage.js";
+import {
+  loadLastScrapedWorkout,
+  wasWorkoutJustScraped,
+  clearJustScrapedFlag,
+} from "./storage.js";
 
 // --------------------------- DOM refs ---------------------------
 
@@ -682,6 +686,54 @@ function rerenderThemeSensitive() {
   renderFromEngine(vm);
 }
 
+// --------------------------- Load scraped workout ---------------------------
+
+async function checkLastScrapeAndAlert() {
+  try {
+    const [justScraped, last] = await Promise.all([
+      wasWorkoutJustScraped(),
+      loadLastScrapedWorkout(),
+    ]);
+
+    if (!justScraped || !last) {
+      return;
+    }
+
+    const name = last.workoutTitle || "(unnamed workout)";
+    const success = !!last.success;
+    const source = last.source || "";
+    const url = last.sourceURL || "";
+    const error = last.error || "";
+
+    let lines = [];
+
+    lines.push(`Workout: ${name}`);
+    if (source) lines.push(`Source: ${source}`);
+    if (url) lines.push(`URL: ${url}`);
+
+    lines.push("");
+    lines.push(`Scrape state: ${success ? "SUCCESS" : "FAILED"}`);
+
+    if (!success && error) {
+      lines.push("");
+      lines.push(`Error: ${error}`);
+    }
+
+    alert(lines.join("\n"));
+
+  } catch (err) {
+    console.error("[Workout] Failed to check last scrape:", err);
+  } finally {
+    // Ensure the flag is cleared so we only alert once per scrape
+    try {
+      await clearJustScrapedFlag();
+    } catch (err) {
+      console.error("[Workout] Failed to clear just-scraped flag:", err);
+    }
+  }
+}
+
+
 // --------------------------- Init ---------------------------
 
 async function initPage() {
@@ -704,6 +756,9 @@ async function initPage() {
 
   // Settings modal (handles startup checks, dirs, sound, env, logs view)
   await initSettings();
+
+  // Check if a workout was just scraped and, if so, alert the user
+  await checkLastScrapeAndAlert();
 
   if (window.matchMedia) {
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
@@ -881,7 +936,13 @@ async function initPage() {
     drawChart(currentVm);
   });
 
-  console.log("last scrape", await loadLastScrapedWorkout());
+  // Re-check on focus (flag ensures we only alert once per scrape)
+  window.addEventListener("focus", () => {
+    checkLastScrapeAndAlert().catch((err) => {
+      console.error("[Workout] focus scrape check error:", err);
+    });
+  });
+
   logDebug("Workout page ready.");
 }
 
