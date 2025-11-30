@@ -651,11 +651,11 @@ function blocksSimilarSteady(a, b, durTolSec, pwrTol) {
  *
  * @param {CanonicalWorkout} meta
  * @param {Object} [options]
- * @param {string} [options.category]   - Optional Zwift category (default: meta.source or "Imported")
  * @param {string} [options.sportType]  - Zwift sportType (default: "bike")
  * @returns {string} ZWO XML content
  */
-export function canonicalWorkoutToZwoXml(meta, options = {}) {
+export function canonicalWorkoutToZwoXml(meta) {
+
   const {
     source = "Unknown",
     sourceURL = "",
@@ -664,9 +664,6 @@ export function canonicalWorkoutToZwoXml(meta, options = {}) {
     description = "",
     filename = "",
   } = meta || {};
-
-  const category = options.category || source || "Imported";
-  const sportType = options.sportType || "bike";
 
   const name =
     (workoutTitle || "Custom workout").trim() || "Custom workout";
@@ -705,8 +702,7 @@ export function canonicalWorkoutToZwoXml(meta, options = {}) {
   <author>${escapeXml(author)}</author>
   <name>${escapeXml(name)}</name>
   <description>${cdataWrap(descCombined)}</description>
-  <category>${escapeXml(category)}</category>
-  <sportType>${escapeXml(sportType)}</sportType>
+  <sportType>bike</sportType>
   <tags>
 ${urlTag}  </tags>
   <workout>

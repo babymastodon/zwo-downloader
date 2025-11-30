@@ -351,4 +351,3 @@ export async function pickRootDir() {
     return null;
   }
 }
-

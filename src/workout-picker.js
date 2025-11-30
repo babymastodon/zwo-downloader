@@ -31,8 +31,8 @@ import {
 } from "./storage.js";
 
 import {
-  canonicalWorkoutToZwoXml,
   parseZwoXmlToCanonicalWorkout,
+  canonicalWorkoutToZwoXml,
 } from "./zwo.js";
 
 let instance = null;
@@ -844,16 +844,6 @@ function createWorkoutPicker(config) {
 
   // --------------------------- save to library ---------------------------
 
-  function sanitizeZwoFileName(name) {
-    const base =
-      (name || "Custom workout").trim() || "Custom workout";
-    return base
-      .replace(/[\\\/:*?"<>|]/g, "_")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 80);
-  }
-
   function resetPickerFilters() {
     if (searchInput) searchInput.value = "";
     if (categoryFilter) categoryFilter.value = "";
@@ -989,6 +979,7 @@ function createWorkoutPicker(config) {
     try {
       const validation = workoutBuilder.validateForSave();
       if (!validation.ok) {
+        // validateForSave is assumed to show its own messages
         return;
       }
 
@@ -1004,87 +995,24 @@ function createWorkoutPicker(config) {
         return;
       }
 
-      let dirHandle = await loadZwoDirHandle();
-      if (!dirHandle) {
-        alert(
-          "No workout library folder configured.\n\n" +
-          "Open Settings and choose a VeloDrive folder first."
-        );
+      const result = await saveCanonicalWorkoutToZwoDir(canonical);
+      if (!result.ok) {
+        // Helper already alerted the user.
         return;
       }
 
-      const hasPerm = await ensureDirPermission(dirHandle);
-      if (!hasPerm) {
-        alert(
-          "VeloDrive does not have permission to write to your workout library folder.\n\n" +
-          "Please re-authorize the folder in Settings."
-        );
-        return;
-      }
-
-      const baseName = sanitizeZwoFileName(
-        canonical.workoutTitle || "Custom workout"
-      );
-      const fileName = baseName + ".zwo";
-
-      // Detect overwrite case
-      let overwriting = false;
-      try {
-        await dirHandle.getFileHandle(fileName, {create: false});
-        overwriting = true;
-      } catch {
-        // File does not exist → first save → no overwrite
-      }
-
-      if (overwriting) {
-        const moved = await moveWorkoutFileToTrash(fileName);
-        if (!moved) {
-          alert(
-            `Failed to move existing workout "${fileName}" to trash.\n\n` +
-            "The workout was NOT saved."
-          );
-          return;
-        }
-      }
-
-      // Infer category from segments
-      const inferredCategory =
-        inferCategoryFromSegments(canonical.rawSegments) ||
-        "Imported";
-
-      const zwoXml = canonicalWorkoutToZwoXml(canonical, {
-        category: inferredCategory,
-        sportType: "bike",
-      });
-
-      // Write the new file
-      try {
-        const fileHandle =
-          await dirHandle.getFileHandle(fileName, {
-            create: true,
-          });
-        const writable = await fileHandle.createWritable();
-        await writable.write(zwoXml);
-        await writable.close();
-      } catch (err) {
-        console.error(
-          "[WorkoutPicker] Writing new file failed:",
-          err
-        );
-        alert(
-          `Saving workout "${fileName}" failed while writing the file.\n\n` +
-          "See logs for details."
-        );
-        return;
-      }
-
-      // Success → clean up
+      // Success → clean up + refresh UI
       workoutBuilder.clearState();
       exitBuilderMode();
 
-      await rescanWorkouts(dirHandle);
+      const dirHandle =
+        result.dirHandle || (await loadZwoDirHandle());
+      if (dirHandle) {
+        await rescanWorkouts(dirHandle);
+      }
+
       resetPickerFilters();
-      pickerExpandedKey = fileName;
+      pickerExpandedKey = result.fileName || null;
       renderWorkoutPickerTable();
     } catch (err) {
       console.error(
@@ -1097,6 +1025,97 @@ function createWorkoutPicker(config) {
       );
     }
   }
+
+  function sanitizeZwoFileName(name) {
+    const base =
+      (name || "Custom workout").trim() || "Custom workout";
+    return base
+      .replace(/[\\\/:*?"<>|]/g, "_")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80);
+  }
+
+  /**
+   * Save a CanonicalWorkout as a .zwo file in the configured ZWO directory.
+   * Handles:
+   *   - no ZWO folder selected
+   *   - permission issues
+   *   - overwriting by moving old file to trash first
+   *   - actual write failures
+   *
+   * This function is responsible for user-facing alerts.
+   *
+   * @param {import('./zwo.js').CanonicalWorkout} canonical
+   * @returns {Promise<{ ok: boolean, fileName?: string, dirHandle?: FileSystemDirectoryHandle }>}
+   */
+  async function saveCanonicalWorkoutToZwoDir(canonical) {
+    console.log('saving', canonical);
+    let dirHandle = await loadZwoDirHandle();
+    if (!dirHandle) {
+      alert(
+        "No workout library folder configured.\n\n" +
+        "Open Settings and choose a VeloDrive folder first."
+      );
+      return {ok: false};
+    }
+
+    const hasPerm = await ensureDirPermission(dirHandle);
+    if (!hasPerm) {
+      alert(
+        "VeloDrive does not have permission to write to your workout library folder.\n\n" +
+        "Please re-authorize the folder in Settings."
+      );
+      return {ok: false};
+    }
+
+    const baseName = sanitizeZwoFileName(
+      canonical.workoutTitle || "Custom workout"
+    );
+    const fileName = baseName + ".zwo";
+
+    // Detect overwrite case
+    let overwriting = false;
+    try {
+      await dirHandle.getFileHandle(fileName, {create: false});
+      overwriting = true;
+    } catch {
+      // File does not exist → first save → no overwrite
+    }
+
+    if (overwriting) {
+      const moved = await moveWorkoutFileToTrash(fileName);
+      if (!moved) {
+        alert(
+          `Failed to move existing workout "${fileName}" to trash.\n\n` +
+          "The workout was NOT saved."
+        );
+        return {ok: false};
+      }
+    }
+
+    const zwoXml = canonicalWorkoutToZwoXml(canonical);
+
+    // Write the new file
+    try {
+      const fileHandle = await dirHandle.getFileHandle(fileName, {
+        create: true,
+      });
+      const writable = await fileHandle.createWritable();
+      await writable.write(zwoXml);
+      await writable.close();
+    } catch (err) {
+      console.error("[WorkoutPicker] Writing new file failed:", err);
+      alert(
+        `Saving workout "${fileName}" failed while writing the file.\n\n` +
+        "See logs for details."
+      );
+      return {ok: false};
+    }
+
+    return {ok: true, fileName, dirHandle};
+  }
+
 
   // --------------------------- public API ---------------------------
 
@@ -1195,6 +1214,7 @@ function createWorkoutPicker(config) {
     open,
     close,
     syncFtpChanged,
+    saveCanonicalWorkoutToZwoDir,
   };
 }
 

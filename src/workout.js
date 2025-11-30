@@ -695,7 +695,7 @@ function rerenderThemeSensitive() {
 
 // --------------------------- Load scraped workout ---------------------------
 
-async function checkLastScrapeAndAlert() {
+async function handleLastScrapedWorkout() {
   try {
     const [justScraped, last] = await Promise.all([
       wasWorkoutJustScraped(),
@@ -712,26 +712,89 @@ async function checkLastScrapeAndAlert() {
     const url = last.sourceURL || "";
     const error = last.error || "";
 
-    let lines = [];
+    const baseLines = [];
 
-    lines.push(`Workout: ${name}`);
-    if (source) lines.push(`Source: ${source}`);
-    if (url) lines.push(`URL: ${url}`);
+    baseLines.push(`New workout detected 🎉`);
+    baseLines.push(`Title: ${name}`);
+    if (source) baseLines.push(`Source: ${source}`);
+    if (url) baseLines.push(`URL: ${url}`);
 
-    lines.push("");
-    lines.push(`Scrape state: ${success ? "SUCCESS" : "FAILED"}`);
-
-    if (!success && error) {
-      lines.push("");
-      lines.push(`Error: ${error}`);
+    if (!success || !engine) {
+      // If scrape failed or engine isn't ready, just show a friendly message.
+      baseLines.push("");
+      baseLines.push("Unfortunately we couldn’t load this workout automatically.");
+      if (!success && error) {
+        baseLines.push("");
+        baseLines.push(`Details: ${error}`);
+      }
+      alert(baseLines.join("\n"));
+      return;
     }
 
-    alert(lines.join("\n"));
+    const vm = engine.getViewModel();
+    const hasActiveWorkout =
+      !!vm &&
+      (vm.workoutRunning ||
+        vm.workoutPaused ||
+        vm.workoutStarting);
 
+    if (!hasActiveWorkout) {
+      // No active workout: switch to workout mode if needed and load the new one.
+      if (vm.mode !== "workout") {
+        engine.setMode("workout");
+      }
+      engine.setWorkoutFromPicker(last);
+
+      // Also save the scraped workout into the ZWO directory.
+      try {
+        await picker.saveCanonicalWorkoutToZwoDir(last);
+      } catch (err) {
+        console.error("[Workout] Failed to save scraped workout to ZWO dir:", err);
+      }
+
+      baseLines.push("");
+      baseLines.push("This workout has been loaded as your current selection and saved to your workout folder. You can start it whenever you’re ready.");
+      alert(baseLines.join("\n"));
+    } else {
+      // Active workout exists: ask if user wants to end & replace it.
+      const replace = confirm(
+        "A workout is currently in progress.\n\nDo you want to end it now (it will be saved) and switch to the newly imported workout?"
+      );
+
+      if (replace) {
+        await engine.endWorkout();
+
+        const vmAfter = engine.getViewModel();
+        if (vmAfter.mode !== "workout") {
+          engine.setMode("workout");
+        }
+        engine.setWorkoutFromPicker(last);
+
+        // Also save the scraped workout into the ZWO directory.
+        try {
+          await saveCanonicalWorkoutToZwoDir(last);
+        } catch (err) {
+          console.error("[Workout] Failed to save scraped workout to ZWO dir:", err);
+        }
+
+        baseLines.push("");
+        baseLines.push("Your previous workout was ended and saved.");
+        baseLines.push("The newly imported workout has been loaded and saved to your workout folder. You can start it when you’re ready.");
+        alert(baseLines.join("\n"));
+      } else {
+        baseLines.push("");
+        baseLines.push("No changes made. Your current workout remains active, and the imported workout was not loaded.");
+        alert(baseLines.join("\n"));
+      }
+    }
   } catch (err) {
-    console.error("[Workout] Failed to check last scrape:", err);
+    console.error("[Workout] Failed to handle last scraped workout:", err);
+    alert(
+      "We found a newly imported workout, but something went wrong while trying to load it.\n\n" +
+      "If you’re debugging this app, check the console for more details."
+    );
   } finally {
-    // Ensure the flag is cleared so we only alert once per scrape
+    // Ensure the flag is cleared so we only prompt once per scrape
     try {
       await clearJustScrapedFlag();
     } catch (err) {
@@ -739,6 +802,7 @@ async function checkLastScrapeAndAlert() {
     }
   }
 }
+
 
 // --------------------------- Init ---------------------------
 
@@ -763,8 +827,8 @@ async function initPage() {
   // Settings modal (handles startup checks, dirs, sound, env, logs view)
   await initSettings();
 
-  // Check if a workout was just scraped and, if so, alert the user
-  await checkLastScrapeAndAlert();
+  // Check if a workout was just scraped and, if so, load/offer to replace
+  await handleLastScrapedWorkout();
 
   if (window.matchMedia) {
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
@@ -942,9 +1006,9 @@ async function initPage() {
     drawChart(currentVm);
   });
 
-  // Re-check on focus (flag ensures we only alert once per scrape)
+  // Re-check on focus (flag ensures we only prompt once per scrape)
   window.addEventListener("focus", () => {
-    checkLastScrapeAndAlert().catch((err) => {
+    handleLastScrapedWorkout().catch((err) => {
       console.error("[Workout] focus scrape check error:", err);
     });
   });
