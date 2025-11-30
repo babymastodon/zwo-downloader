@@ -215,17 +215,75 @@
   padding: 4px 2px;
 }
 
-.picker-graph {
-  flex: 0 0 50%;
-  max-width: 50%;
-  min-width: 240px;
-  position: relative;
-}
-
 .picker-graph-svg {
   width: 100%;
-  height: 120px;
+  height: 200px;
   display: block;
+}
+
+/* Expanded picker layout: stack header + main + chart vertically */
+.picker-expanded-layout {
+  display: flex;
+  /* builds on existing .picker-expanded flex */
+  flex-direction: column;
+  /* override row layout */
+  gap: 8px;
+}
+
+/* Header: title on the first column, buttons grouped on the right */
+.picker-expanded-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: flex-start;
+  column-gap: 8px;
+  row-gap: 4px;
+  width: 100%;
+}
+
+.picker-expanded-title {
+  font-weight: 700;
+  font-size: 20px;
+}
+
+/* Buttons row (right column), right aligned, wrapping if needed */
+.picker-expanded-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* Content row: stats (left) + description (right) */
+.picker-expanded-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.picker-expanded-main-left,
+.picker-expanded-main-right {
+  margin-top: 8px;
+  flex: 1 1 280px;
+  /* side-by-side on wide, stack when narrow */
+  min-width: 0;
+}
+
+/* Let chips wrap nicely inside their column */
+.picker-expanded-main-left .wb-stats-row {
+  margin-top: 10px;
+  width: 100%;
+}
+
+/* Chart row: full width */
+.picker-expanded-chart {
+  width: 100%;
+}
+
+.picker-graph {
+  flex: 0 0 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .picker-detail {

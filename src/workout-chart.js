@@ -273,6 +273,7 @@ function renderSegmentsFromRaw({
  * - currentFtp: current FTP used in the picker view.
  */
 export function renderMiniWorkoutGraph(container, workout, currentFtp) {
+  // Clear previous contents
   container.innerHTML = "";
 
   const rawSegments = workout?.rawSegments || [];
@@ -296,24 +297,38 @@ export function renderMiniWorkoutGraph(container, workout, currentFtp) {
     return;
   }
 
-  const width = 400;
-  const height = 120;
+  // Match the SVG size to the container's bounding rect
+  const rect = container.getBoundingClientRect();
+  let width = rect.width;
+  let height = rect.height;
+  console.log("bounding rect", rect);
+
+  // Fallbacks in case the container has 0 size at render time
+  if (!width) width = container.clientWidth || 400;
+  if (!height) height = container.clientHeight || 120;
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  // Internal coordinate system matches the pixel size of the container
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  // Physically size the SVG to the container
+  svg.setAttribute("width", String(width));
+  svg.setAttribute("height", String(height));
   svg.setAttribute("preserveAspectRatio", "none");
   svg.classList.add("picker-graph-svg");
 
+  // Transparent background rect so the whole area is hoverable
   const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
   bg.setAttribute("x", "0");
   bg.setAttribute("y", "0");
-  bg.setAttribute("width", width);
-  bg.setAttribute("height", height);
+  bg.setAttribute("width", String(width));
+  bg.setAttribute("height", String(height));
   bg.setAttribute("fill", "transparent");
   svg.appendChild(bg);
 
+  // Vertical scale: same logic as before
   const maxY = Math.max(200, ftp * 2);
 
+  // Draw workout segments
   renderSegmentsFromRaw({
     svg,
     rawSegments,
@@ -324,14 +339,17 @@ export function renderMiniWorkoutGraph(container, workout, currentFtp) {
     maxY,
   });
 
+  // Tooltip element lives inside the same container
   const tooltip = document.createElement("div");
   tooltip.className = "picker-tooltip";
 
   container.appendChild(svg);
   container.appendChild(tooltip);
 
+  // Hover handling shared with main chart
   attachSegmentHover(svg, tooltip, container, ftp);
 }
+
 
 // --------------------------- Main workout chart ---------------------------
 

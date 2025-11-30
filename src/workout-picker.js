@@ -326,6 +326,19 @@ function createWorkoutPicker(config) {
   }
 
   // --------------------------- rendering ---------------------------
+  function createStatChip(label) {
+    const el = document.createElement("div");
+    el.className = "wb-stat-chip";
+    const labelEl = document.createElement("div");
+    labelEl.className = "wb-stat-label";
+    labelEl.textContent = label;
+    const valueEl = document.createElement("div");
+    valueEl.className = "wb-stat-value";
+    valueEl.textContent = "--";
+    el.appendChild(labelEl);
+    el.appendChild(valueEl);
+    return {el, value: valueEl};
+  }
 
   function renderWorkoutPickerTable() {
     if (!tbody) return;
@@ -364,74 +377,83 @@ function createWorkoutPicker(config) {
       const source = canonical.source || "";
       const description = canonical.description || "";
 
-      const tr = document.createElement("tr");
-      tr.className = "picker-row";
-      tr.dataset.title = title;
+      const isExpanded = pickerExpandedTitle === title;
 
-      const tdName = document.createElement("td");
-      tdName.textContent = title;
-      tdName.title = title;
-      tr.appendChild(tdName);
+      if (!isExpanded) {
+        // --------- Normal (collapsed) row ----------
+        const tr = document.createElement("tr");
+        tr.className = "picker-row";
+        tr.dataset.title = title;
 
-      const tdCat = document.createElement("td");
-      tdCat.textContent = zone || "Uncategorized";
-      tr.appendChild(tdCat);
+        const tdName = document.createElement("td");
+        tdName.textContent = title;
+        tdName.title = title;
+        tr.appendChild(tdName);
 
-      const tdSource = document.createElement("td");
-      tdSource.textContent = source;
-      tr.appendChild(tdSource);
+        const tdCat = document.createElement("td");
+        tdCat.textContent = zone || "Uncategorized";
+        tr.appendChild(tdCat);
 
-      const tdIf = document.createElement("td");
-      tdIf.textContent =
-        metrics.ifValue != null
-          ? metrics.ifValue.toFixed(2)
-          : "";
-      tr.appendChild(tdIf);
+        const tdSource = document.createElement("td");
+        tdSource.textContent = source;
+        tr.appendChild(tdSource);
 
-      const tdTss = document.createElement("td");
-      tdTss.textContent =
-        metrics.tss != null
-          ? String(Math.round(metrics.tss))
-          : "";
-      tr.appendChild(tdTss);
+        const tdIf = document.createElement("td");
+        tdIf.textContent =
+          metrics.ifValue != null ? metrics.ifValue.toFixed(2) : "";
+        tr.appendChild(tdIf);
 
-      const tdDur = document.createElement("td");
-      tdDur.textContent =
-        metrics.durationMin != null
-          ? `${Math.round(metrics.durationMin)} min`
-          : "";
-      tr.appendChild(tdDur);
+        const tdTss = document.createElement("td");
+        tdTss.textContent =
+          metrics.tss != null ? String(Math.round(metrics.tss)) : "";
+        tr.appendChild(tdTss);
 
-      const tdKj = document.createElement("td");
-      tdKj.textContent =
-        metrics.kj != null
-          ? `${Math.round(metrics.kj)} kJ`
-          : "";
-      tr.appendChild(tdKj);
+        const tdDur = document.createElement("td");
+        tdDur.textContent =
+          metrics.durationMin != null
+            ? `${Math.round(metrics.durationMin)} min`
+            : "";
+        tr.appendChild(tdDur);
 
-      tbody.appendChild(tr);
+        const tdKj = document.createElement("td");
+        tdKj.textContent =
+          metrics.kj != null ? `${Math.round(metrics.kj)} kJ` : "";
+        tr.appendChild(tdKj);
 
-      const expanded = pickerExpandedTitle === title;
-      if (expanded) {
+        tbody.appendChild(tr);
+
+        tr.addEventListener("click", () => {
+          pickerExpandedTitle =
+            pickerExpandedTitle === title ? null : title;
+          renderWorkoutPickerTable();
+        });
+      } else {
+        // --------- Expanded row ONLY (header + tags/description + full-width chart) ----------
         const expTr = document.createElement("tr");
         expTr.className = "picker-expanded-row";
+        expTr.dataset.title = title;
+
         const expTd = document.createElement("td");
         expTd.colSpan = colCount;
 
+        // Use both the original layout class + our column override
         const container = document.createElement("div");
-        container.className = "picker-expanded";
+        container.className = "picker-expanded picker-expanded-layout";
 
-        const graphDiv = document.createElement("div");
-        graphDiv.className = "picker-graph";
+        /* =========================
+           HEADER: title left, buttons right (2-row layout)
+           ========================= */
+        const headerBar = document.createElement("div");
+        headerBar.className = "picker-expanded-header";
 
-        const detailDiv = document.createElement("div");
-        detailDiv.className = "picker-detail";
+        // Title (grid column 1)
+        const titleElDiv = document.createElement("div");
+        titleElDiv.className = "picker-expanded-title";
+        titleElDiv.textContent = title;
 
-        const headerRow = document.createElement("div");
-        headerRow.style.display = "flex";
-        headerRow.style.justifyContent = "flex-end";
-        headerRow.style.gap = "6px";
-        headerRow.style.marginBottom = "4px";
+        // Button group (grid column 2)
+        const actionsRow = document.createElement("div");
+        actionsRow.className = "picker-expanded-actions";
 
         // DELETE button
         const deleteBtn = document.createElement("button");
@@ -444,7 +466,6 @@ function createWorkoutPicker(config) {
         const deleteIcon = createIconSvg("delete");
         const deleteText = document.createElement("span");
         deleteText.textContent = "Delete";
-
         deleteBtn.appendChild(deleteIcon);
         deleteBtn.appendChild(deleteText);
 
@@ -463,7 +484,6 @@ function createWorkoutPicker(config) {
         const editIcon = createIconSvg("edit");
         const editText = document.createElement("span");
         editText.textContent = "Edit";
-
         editBtn.appendChild(editIcon);
         editBtn.appendChild(editText);
 
@@ -484,40 +504,119 @@ function createWorkoutPicker(config) {
           doSelectWorkout(canonical);
         });
 
-        headerRow.appendChild(deleteBtn);
-        headerRow.appendChild(editBtn);
-        headerRow.appendChild(selectBtn);
-        detailDiv.appendChild(headerRow);
+        actionsRow.appendChild(deleteBtn);
+        actionsRow.appendChild(editBtn);
+        actionsRow.appendChild(selectBtn);
 
-        if (description && description.trim()) {
-          const descHtml = description.replace(/\n/g, "<br>");
-          const descContainer = document.createElement("div");
-          descContainer.innerHTML = descHtml;
-          detailDiv.appendChild(descContainer);
-        } else {
-          const empty = document.createElement("div");
-          empty.className = "picker-detail-empty";
-          empty.textContent = "(No description)";
-          detailDiv.appendChild(empty);
+        // Put into header (grid auto-places them into the two columns)
+        headerBar.appendChild(titleElDiv);
+        headerBar.appendChild(actionsRow);
+        container.appendChild(headerBar);
+
+        /* =========================
+           CONTENT 1: tags (left) + description (right)
+           ========================= */
+        const contentRow1 = document.createElement("div");
+        contentRow1.className = "picker-expanded-main";
+
+        // Left: tags / stats
+        const tagsCol = document.createElement("div");
+        tagsCol.className = "picker-expanded-main-left";
+
+        const tagsRow = document.createElement("div");
+        tagsRow.className = "wb-stats-row";
+
+        // Chips (using original helper signature)
+        const zoneChip = createStatChip("Zone");
+        zoneChip.value.textContent = zone || "Uncategorized";
+        tagsRow.appendChild(zoneChip.el);
+
+        if (source) {
+          const sourceChip = createStatChip("Source");
+          sourceChip.value.textContent = source;
+          tagsRow.appendChild(sourceChip.el);
         }
 
-        container.appendChild(graphDiv);
-        container.appendChild(detailDiv);
+        if (metrics.ifValue != null) {
+          const ifChip = createStatChip("IF");
+          ifChip.value.textContent = metrics.ifValue.toFixed(2);
+          tagsRow.appendChild(ifChip.el);
+        }
+
+        if (metrics.tss != null) {
+          const tssChip = createStatChip("TSS");
+          tssChip.value.textContent = String(Math.round(metrics.tss));
+          tagsRow.appendChild(tssChip.el);
+        }
+
+        if (metrics.durationMin != null) {
+          const durChip = createStatChip("Duration");
+          durChip.value.textContent = `${Math.round(
+            metrics.durationMin
+          )} min`;
+          tagsRow.appendChild(durChip.el);
+        }
+
+        if (metrics.kj != null) {
+          const kjChip = createStatChip("kJ");
+          kjChip.value.textContent = `${Math.round(metrics.kj)}`;
+          tagsRow.appendChild(kjChip.el);
+        }
+
+        tagsCol.appendChild(tagsRow);
+
+        // Right: description
+        const descCol = document.createElement("div");
+        descCol.className = "picker-expanded-main-right";
+        descCol.style.fontSize = "14px";
+        descCol.style.lineHeight = "1.4";
+
+        if (description && description.trim()) {
+          descCol.innerHTML = description.replace(/\n/g, "<br>");
+        } else {
+          descCol.textContent = "(No description)";
+          descCol.className = "picker-detail-empty";
+        }
+
+        contentRow1.appendChild(tagsCol);
+        contentRow1.appendChild(descCol);
+        container.appendChild(contentRow1);
+
+        /* =========================
+           CONTENT 2: full-width chart (same height)
+           ========================= */
+        const contentRow2 = document.createElement("div");
+        contentRow2.className = "picker-expanded-chart";
+
+        const graphDiv = document.createElement("div");
+        graphDiv.className = "picker-graph";
+
+        contentRow2.appendChild(graphDiv);
+        container.appendChild(contentRow2);
+
         expTd.appendChild(container);
         expTr.appendChild(expTd);
         tbody.appendChild(expTr);
 
         renderMiniWorkoutGraph(graphDiv, canonical, currentFtp);
-      }
 
-      tr.addEventListener("click", () => {
-        pickerExpandedTitle =
-          pickerExpandedTitle === title ? null : title;
-        renderWorkoutPickerTable();
-      });
+        // NOTE: no click handler on expTr — clicking does NOT collapse the row
+      }
     }
 
     updateSortHeaderIndicator();
+
+    // After rendering, scroll the expanded row into view (if any).
+    requestAnimationFrame(() => {
+      if (!pickerExpandedTitle || !tbody) return;
+      const expandedRow = tbody.querySelector(".picker-expanded-row");
+      if (!expandedRow) return;
+
+      expandedRow.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    });
   }
 
   async function openWorkoutInBuilder(canonicalWorkout) {
