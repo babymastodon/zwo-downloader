@@ -887,35 +887,156 @@ export function createWorkoutBuilder(options) {
     };
   }
 
+  // segments: [minutes, startPct, endPct?]
+  // Detects repeated steady on/off pairs and emits IntervalsT when possible.
+  function segmentsToZwoSnippet(segments) {
+    if (!Array.isArray(segments) || !segments.length) return "";
 
-  /**
- * Convert an array of [minutes, startPct, endPct] into ZWO lines.
- * Percent values are integers like 40 (for 40% FTP).
- */
-  function segmentsToZwoSnippet(segments, opts = {}) {
-    const lines = segments.map((seg) => {
+    const blocks = [];
+
+    // ---------- 1) segments -> blocks ----------
+    for (const seg of segments) {
+      if (!Array.isArray(seg) || seg.length < 2) continue;
+
       const minutes = Number(seg[0]);
       const startPct = Number(seg[1]);
       const endPct = seg.length > 2 && seg[2] != null ? Number(seg[2]) : startPct;
 
-      if (!Number.isFinite(minutes) || minutes <= 0) {
-        return null;
+      if (
+        !Number.isFinite(minutes) ||
+        minutes <= 0 ||
+        !Number.isFinite(startPct) ||
+        !Number.isFinite(endPct)
+      ) {
+        continue;
       }
 
-      const durSec = Math.round(minutes * 60);
-      const pLow = (startPct / 100).toFixed(2);
-      const pHigh = (endPct / 100).toFixed(2);
+      const durationSec = minutes * 60;
+      const pStartRel = startPct / 100;
+      const pEndRel = endPct / 100;
 
-      if (pLow === pHigh) {
-        return `<SteadyState Duration="${durSec}" Power="${pLow}" />`;
-      }
-      if (pHigh > pLow) {
-        return `<Warmup Duration="${durSec}" PowerLow="${pLow}" PowerHigh="${pHigh}" />`;
-      }
-      return `<Cooldown Duration="${durSec}" PowerLow="${pLow}" PowerHigh="${pHigh}" />`;
-    });
+      if (durationSec <= 0) continue;
 
-    return lines.filter(Boolean).join("\n");
+      if (Math.abs(pStartRel - pEndRel) < 1e-6) {
+        // steady
+        blocks.push({
+          kind: "steady",
+          durationSec,
+          powerRel: pStartRel,
+        });
+      } else if (pEndRel > pStartRel) {
+        // ramp up
+        blocks.push({
+          kind: "rampUp",
+          durationSec,
+          powerLowRel: pStartRel,
+          powerHighRel: pEndRel,
+        });
+      } else {
+        // ramp down
+        blocks.push({
+          kind: "rampDown",
+          durationSec,
+          powerLowRel: pStartRel,
+          powerHighRel: pEndRel,
+        });
+      }
+    }
+
+    if (!blocks.length) return "";
+
+    // ---------- 2) compress blocks -> ZWO lines ----------
+    const lines = [];
+    const DUR_TOL = 1;      // seconds
+    const PWR_TOL = 0.01;   // relative FTP (0.01 = 1%)
+
+    let i = 0;
+
+    while (i < blocks.length) {
+      // Try to detect repeated steady on/off pairs → IntervalsT
+      if (i + 3 < blocks.length) {
+        const firstA = blocks[i];
+        const firstB = blocks[i + 1];
+
+        if (firstA.kind === "steady" && firstB.kind === "steady") {
+          let repeat = 1;
+          let j = i + 2;
+
+          // Scan forward for more identical A/B pairs
+          while (j + 1 < blocks.length) {
+            const nextA = blocks[j];
+            const nextB = blocks[j + 1];
+
+            if (
+              nextA.kind !== "steady" ||
+              nextB.kind !== "steady" ||
+              !blocksSimilarSteady(firstA, nextA, DUR_TOL, PWR_TOL) ||
+              !blocksSimilarSteady(firstB, nextB, DUR_TOL, PWR_TOL)
+            ) {
+              break;
+            }
+
+            repeat++;
+            j += 2;
+          }
+
+          if (repeat >= 2) {
+            const onDur = Math.round(firstA.durationSec);
+            const offDur = Math.round(firstB.durationSec);
+            const onPow = firstA.powerRel.toFixed(2);
+            const offPow = firstB.powerRel.toFixed(2);
+
+            lines.push(
+              `<IntervalsT Repeat="${repeat}"` +
+              ` OnDuration="${onDur}" OffDuration="${offDur}"` +
+              ` OnPower="${onPow}" OffPower="${offPow}" />`,
+            );
+
+            i += repeat * 2;
+            continue;
+          }
+        }
+      }
+
+      // Fallback: single block -> SteadyState / Warmup / Cooldown
+      const b = blocks[i];
+
+      if (b.kind === "steady") {
+        lines.push(
+          `<SteadyState Duration="${Math.round(
+            b.durationSec,
+          )}" Power="${b.powerRel.toFixed(2)}" />`,
+        );
+      } else if (b.kind === "rampUp") {
+        lines.push(
+          `<Warmup Duration="${Math.round(
+            b.durationSec,
+          )}" PowerLow="${b.powerLowRel.toFixed(
+            2,
+          )}" PowerHigh="${b.powerHighRel.toFixed(2)}" />`,
+        );
+      } else if (b.kind === "rampDown") {
+        lines.push(
+          `<Cooldown Duration="${Math.round(
+            b.durationSec,
+          )}" PowerLow="${b.powerLowRel.toFixed(
+            2,
+          )}" PowerHigh="${b.powerHighRel.toFixed(2)}" />`,
+        );
+      }
+
+      i++;
+    }
+
+    return lines.join("\n");
+  }
+
+  // Helper: compare steady blocks
+  function blocksSimilarSteady(a, b, durTolSec, pwrTol) {
+    if (a.kind !== "steady" || b.kind !== "steady") return false;
+    const durDiff = Math.abs(a.durationSec - b.durationSec);
+    const pDiff = Math.abs(a.powerRel - b.powerRel);
+    return durDiff <= durTolSec && pDiff <= pwrTol;
   }
 
   // ---------- TrainerDay ----------
