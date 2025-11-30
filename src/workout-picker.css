@@ -58,9 +58,8 @@
   min-width: 0;
 }
 
-.workout-picker-controls input[type="search"],
-.workout-picker-controls select {
-  padding: 4px 6px;
+.workout-picker-controls input[type="search"] {
+  padding: 6px 10px;
   font-size: 14px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
@@ -68,10 +67,38 @@
   background: var(--surface);
   color: var(--text-main);
   min-width: 0;
+  min-width: 220px;
 }
 
-.workout-picker-controls input[type="search"] {
-  min-width: 220px;
+.workout-picker-controls select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+
+  padding: 6px 10px;
+  padding-right: 26px;
+  font-size: 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  outline: none;
+  background: var(--surface);
+  color: var(--text-main);
+  min-width: 0;
+
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 9px 5px;
+}
+
+.workout-picker-controls select:hover {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+@media (prefers-color-scheme: dark) {
+  .workout-picker-controls select:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+  }
 }
 
 .workout-picker-controls input[type="search"]:focus,

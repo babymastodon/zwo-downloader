@@ -442,6 +442,30 @@ export function createWorkoutBuilder(options) {
     refreshLayout();
   }
 
+  function loadFromWorkoutMeta(meta) {
+    if (!meta || typeof meta !== "object") return;
+
+    // Metadata
+    nameField.input.value = meta.name || "";
+    sourceField.input.value = meta.source || "";
+    descField.textarea.value = meta.description || "";
+
+    // Code:
+    // Prefer a raw snippet if you ever store one; otherwise rebuild from segmentsForMetrics.
+    if (meta.rawSnippet && meta.rawSnippet.trim()) {
+      codeTextarea.value = meta.rawSnippet;
+    } else if (Array.isArray(meta.segmentsForMetrics) && meta.segmentsForMetrics.length) {
+      codeTextarea.value = segmentsToZwoSnippet(segmentsToRaw(
+        meta.segmentsForMetrics
+      ));
+    } else {
+      codeTextarea.value = "";
+    }
+
+    // Recompute metrics, errors, stats, and persist
+    handleAnyChange();
+  }
+
   function validateForSave() {
     // Keep currentErrors / metrics up to date
     handleAnyChange();
@@ -540,15 +564,14 @@ export function createWorkoutBuilder(options) {
       '<Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50" />';
   }
 
-  function convertSegments(segments) {
+  function segmentsToRaw(segments) {
     return segments.map(s => {
-      const minutes = Math.round(s.durationSec / 60);          // 60 sec → 1
-      const startPct = Math.round(s.pStartRel * 100);          // 0.40 → 40
-      const endPct = Math.round(s.pEndRel * 100);              // 0.40 → 40
+      const minutes = s.durationSec / 60;          // 60 sec → 1
+      const startPct = s.pStartRel * 100;          // 0.40 → 40
+      const endPct = s.pEndRel * 100;              // 0.40 → 40
       return [minutes, startPct, endPct];
     });
   }
-
 
   function handleAnyChange(opts = {}) {
     const {skipParse = false} = opts;
@@ -564,7 +587,7 @@ export function createWorkoutBuilder(options) {
 
     if (currentSegments.length && ftp > 0) {
       currentMetrics = computeMetricsFromSegments(currentSegments, ftp);
-      currentCategory = inferCategoryFromSegments(convertSegments(currentSegments));
+      currentCategory = inferCategoryFromSegments(segmentsToRaw(currentSegments));
     } else {
       currentMetrics = {
         totalSec: 0,
@@ -1628,6 +1651,7 @@ export function createWorkoutBuilder(options) {
     clearState,
     refreshLayout,
     validateForSave,
+    loadFromWorkoutMeta,
   };
 }
 

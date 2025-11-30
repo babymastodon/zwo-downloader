@@ -302,8 +302,52 @@ function createWorkoutPicker(config) {
         const headerRow = document.createElement("div");
         headerRow.style.display = "flex";
         headerRow.style.justifyContent = "flex-end";
+        headerRow.style.gap = "6px";
         headerRow.style.marginBottom = "4px";
 
+        // EDIT button
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "wb-code-insert-btn edit-workout-btn";
+        editBtn.title = "Open this workout in the builder.";
+
+        // --- SVG icon (pencil/edit) ---
+        const editIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        editIcon.setAttribute("viewBox", "0 0 24 24");
+        editIcon.setAttribute("width", "16");
+        editIcon.setAttribute("height", "16");
+        editIcon.classList.add("wb-code-icon");
+        editIcon.setAttribute("fill", "none");
+        editIcon.setAttribute("stroke", "currentColor");
+        editIcon.setAttribute("stroke-width", "2");
+        editIcon.setAttribute("stroke-linecap", "round");
+        editIcon.setAttribute("stroke-linejoin", "round");
+
+        // Pencil icon paths
+        const p1 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        p1.setAttribute("d", "M12 20h9");
+
+        const p2 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        p2.setAttribute("d", "M16.5 3.5l4 4-11 11H5.5v-4.5l11-11z");
+
+        editIcon.appendChild(p1);
+        editIcon.appendChild(p2);
+
+        // --- Text wrapped in a <span> ---
+        const editText = document.createElement("span");
+        editText.textContent = "Edit";
+
+        // Combine icon + text
+        editBtn.appendChild(editIcon);
+        editBtn.appendChild(editText);
+
+        // Click event
+        editBtn.addEventListener("click", (evt) => {
+          evt.stopPropagation();
+          openWorkoutInBuilder(w);
+        });
+
+        // SELECT button (existing)
         const selectBtn = document.createElement("button");
         selectBtn.type = "button";
         selectBtn.className = "select-workout-btn";
@@ -314,6 +358,7 @@ function createWorkoutPicker(config) {
           doSelectWorkout(w);
         });
 
+        headerRow.appendChild(editBtn);
         headerRow.appendChild(selectBtn);
         detailDiv.appendChild(headerRow);
 
@@ -349,6 +394,23 @@ function createWorkoutPicker(config) {
     }
 
     updateSortHeaderIndicator();
+  }
+
+  async function openWorkoutInBuilder(workoutMeta) {
+    if (!workoutBuilder) {
+      console.warn("[WorkoutPicker] Workout builder is not available.");
+      return;
+    }
+
+    // Switch UI into builder mode
+    enterBuilderMode();
+
+    // Hand the meta to the builder so it can populate fields + code
+    try {
+      workoutBuilder.loadFromWorkoutMeta(workoutMeta);
+    } catch (err) {
+      console.error("[WorkoutPicker] Failed to load workout into builder:", err);
+    }
   }
 
   function enterBuilderMode() {
@@ -611,6 +673,15 @@ ${indentedBody}
 `;
   }
 
+  function resetPickerFilters() {
+    if (searchInput) searchInput.value = "";
+    if (categoryFilter) categoryFilter.value = "";
+    if (durationFilter) durationFilter.value = "";
+
+    // overwrite saved picker state so next open also starts clean
+    persistPickerState();
+  }
+
 
   async function saveCurrentBuilderWorkoutToZwoDir() {
     if (!workoutBuilder) {
@@ -677,6 +748,7 @@ ${indentedBody}
       exitBuilderMode();
 
       await rescanWorkouts(dirHandle);
+      resetPickerFilters();
       pickerExpandedKey = fileName; // key is fileName in render
       renderWorkoutPickerTable();
 

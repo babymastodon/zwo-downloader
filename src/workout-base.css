@@ -31,6 +31,11 @@
   --zone-anaerobic: #ff403d;
 
   --stat-number-color: #333333;
+
+  --select-arrow: url("data:image/svg+xml;utf8,\
+    <svg xmlns='http://www.w3.org/2000/svg' width='9' height='5' viewBox='0 0 9 5' fill='none'>\
+      <path d='M1 1l3.5 3L8 1' stroke='%23999' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'/>\
+    </svg>");
 }
 
 @media (prefers-color-scheme: dark) {
