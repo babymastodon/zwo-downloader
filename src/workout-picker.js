@@ -7,16 +7,18 @@
 //   - metrics-based sorting/filtering
 //   - rendering mini workout graphs
 //   - keyboard navigation & state persistence
+//
+// NOTE: This version uses CanonicalWorkout as the primary data structure.
+// ZWO files are parsed via parseZwoXmlToCanonicalWorkout, and ALL metrics
+// are derived from CanonicalWorkout.rawSegments + current FTP.
 
 import {
-  parseZwo,
+  computeMetricsFromSegments,
   getDurationBucket,
-  getAdjustedKjForPicker,
   inferCategoryFromSegments,
 } from "./workout-metrics.js";
 
 import {createWorkoutBuilder} from "./workout-builder.js";
-
 import {renderMiniWorkoutGraph} from "./workout-chart.js";
 
 import {
@@ -30,6 +32,7 @@ import {
 
 import {
   canonicalWorkoutToZwoXml,
+  parseZwoXmlToCanonicalWorkout,
 } from "./zwo.js";
 
 let instance = null;
@@ -61,7 +64,58 @@ export function getWorkoutPicker(config) {
 
 // --------------------------- ZWO scanning ---------------------------
 
+/**
+ * Convert CanonicalWorkout.rawSegments into "segmentsForMetrics":
+ *   [{ durationSec, pStartRel, pEndRel }, ...]
+ * where pStartRel / pEndRel are 0–1 (fraction of FTP).
+ *
+ * Canonical rawSegments are:
+ *   [minutes, startPct, endPct]
+ * where pct is % of FTP (0–100).
+ *
+ * @param {import('./zwo.js').CanonicalWorkout} canonical
+ */
+function canonicalToMetricsSegments(canonical) {
+  const raw = Array.isArray(canonical?.rawSegments)
+    ? canonical.rawSegments
+    : [];
+  const out = [];
+  for (const seg of raw) {
+    if (!Array.isArray(seg) || seg.length < 2) continue;
+
+    const minutes = Number(seg[0]);
+    const startPct = Number(seg[1]);
+    const endPct =
+      seg.length > 2 && seg[2] != null ? Number(seg[2]) : startPct;
+
+    if (
+      !Number.isFinite(minutes) ||
+      !Number.isFinite(startPct) ||
+      !Number.isFinite(endPct)
+    ) {
+      continue;
+    }
+
+    const durationSec = minutes * 60;
+    if (durationSec <= 0) continue;
+
+    out.push({
+      durationSec,
+      pStartRel: startPct / 100,
+      pEndRel: endPct / 100,
+    });
+  }
+  return out;
+}
+
+/**
+ * Scan a directory and return an array of CanonicalWorkout.
+ *
+ * @param {FileSystemDirectoryHandle} handle
+ * @returns {Promise<import('./zwo.js').CanonicalWorkout[]>}
+ */
 async function scanWorkoutsFromDirectory(handle) {
+  /** @type {import('./zwo.js').CanonicalWorkout[]} */
   const workouts = [];
   try {
     for await (const entry of handle.values()) {
@@ -70,8 +124,14 @@ async function scanWorkoutsFromDirectory(handle) {
 
       const file = await entry.getFile();
       const text = await file.text();
-      const meta = parseZwo(text, entry.name);
-      workouts.push(meta);
+
+      const canonicalWorkout = parseZwoXmlToCanonicalWorkout(
+        text,
+        entry.name
+      );
+      if (!canonicalWorkout) continue;
+
+      workouts.push(canonicalWorkout);
     }
   } catch (err) {
     console.error("[WorkoutPicker] Error scanning workouts:", err);
@@ -135,7 +195,6 @@ function createIconSvg(kind) {
   return svg;
 }
 
-
 // --------------------------- Singleton factory ---------------------------
 
 function createWorkoutPicker(config) {
@@ -161,14 +220,15 @@ function createWorkoutPicker(config) {
   const emptyAddBtn = modal.querySelector("#pickerEmptyAddBtn");
   const titleEl = modal.querySelector("#workoutPickerTitle");
 
+  /** @type {import('./zwo.js').CanonicalWorkout[]} */
   let pickerWorkouts = [];
   let pickerExpandedKey = null;
-  let pickerSortKey = "kjAdj";
+  let pickerSortKey = "kjAdj"; // header label preserved, but this is kJ @ current FTP
   let pickerSortDir = "asc";
   let isPickerOpen = false;
   let isBuilderMode = false;
 
-  // IMPORTANT: workoutBuilder.getState() now returns a CanonicalWorkout
+  // workoutBuilder.getState() returns a CanonicalWorkout
   const workoutBuilder =
     builderRoot &&
     createWorkoutBuilder({
@@ -176,30 +236,96 @@ function createWorkoutPicker(config) {
       getCurrentFtp,
     });
 
-  // --------------------------- filtering / sorting ---------------------------
+  // --------------------------- helpers for derived info ---------------------------
 
+  function getCanonicalName(cw) {
+    return (
+      cw.workoutTitle ||
+      cw.filename ||
+      "Imported workout"
+    );
+  }
+
+  function getCanonicalKey(cw) {
+    return cw.filename || getCanonicalName(cw);
+  }
+
+  function getCanonicalDescription(cw) {
+    return cw.description || "";
+  }
+
+  function getCanonicalSource(cw) {
+    return cw.source || "Imported ZWO";
+  }
+
+  function getCanonicalCategory(cw) {
+    return (
+      inferCategoryFromSegments(cw.rawSegments) ||
+      "Uncategorized"
+    );
+  }
+
+  /**
+   * Structure returned from computeVisiblePickerWorkouts:
+   * { canonical, key, name, description, source, category, segmentsForMetrics, metrics }
+   */
   function computeVisiblePickerWorkouts() {
-    const searchTerm = (searchInput && searchInput.value || "").toLowerCase();
-    const catValue = (categoryFilter && categoryFilter.value) || "";
-    const durValue = (durationFilter && durationFilter.value) || "";
+    const searchTerm =
+      ((searchInput && searchInput.value) || "").toLowerCase();
+    const catValue =
+      (categoryFilter && categoryFilter.value) || "";
+    const durValue =
+      (durationFilter && durationFilter.value) || "";
 
-    let shown = pickerWorkouts;
+    const currentFtp = getCurrentFtp();
+
+    let items = pickerWorkouts.map((canonical) => {
+      const segmentsForMetrics =
+        canonicalToMetricsSegments(canonical);
+      const metrics = computeMetricsFromSegments(
+        segmentsForMetrics,
+        currentFtp
+      );
+      const name = getCanonicalName(canonical);
+      const key = getCanonicalKey(canonical);
+      const description = getCanonicalDescription(canonical);
+      const source = getCanonicalSource(canonical);
+      const category = getCanonicalCategory(canonical);
+
+      return {
+        canonical,
+        key,
+        name,
+        description,
+        source,
+        category,
+        segmentsForMetrics,
+        metrics,
+      };
+    });
 
     if (catValue) {
-      shown = shown.filter((w) => w.category === catValue);
+      items = items.filter(
+        (item) => item.category === catValue
+      );
     }
 
     if (durValue) {
-      shown = shown.filter((w) => getDurationBucket(w.durationMin) === durValue);
+      items = items.filter((item) => {
+        return (
+          getDurationBucket(item.metrics.durationMin) ===
+          durValue
+        );
+      });
     }
 
     if (searchTerm) {
-      shown = shown.filter((w) => {
+      items = items.filter((item) => {
         const haystack = [
-          w.name,
-          w.category,
-          w.source,
-          (w.description || "").slice(0, 300),
+          item.name,
+          item.category,
+          item.source,
+          item.description.slice(0, 300),
         ]
           .join(" ")
           .toLowerCase();
@@ -209,24 +335,31 @@ function createWorkoutPicker(config) {
 
     const sortKey = pickerSortKey;
     const dir = pickerSortDir === "asc" ? 1 : -1;
-    const currentFtp = getCurrentFtp();
 
-    shown = shown.slice().sort((a, b) => {
+    items = items.slice().sort((a, b) => {
       const num = (val) => (Number.isFinite(val) ? val : -Infinity);
+
       if (sortKey === "kjAdj") {
+        // sort by kJ at current FTP
         return (
-          num(getAdjustedKjForPicker(a.baseKj, a.ftpFromFile, currentFtp)) -
-          num(getAdjustedKjForPicker(b.baseKj, b.ftpFromFile, currentFtp))
+          num(a.metrics.kj) - num(b.metrics.kj)
         ) * dir;
       }
       if (sortKey === "if") {
-        return (num(a.ifValue) - num(b.ifValue)) * dir;
+        return (
+          num(a.metrics.ifValue) - num(b.metrics.ifValue)
+        ) * dir;
       }
       if (sortKey === "tss") {
-        return (num(a.tss) - num(b.tss)) * dir;
+        return (
+          num(a.metrics.tss) - num(b.metrics.tss)
+        ) * dir;
       }
       if (sortKey === "duration") {
-        return (num(a.durationMin) - num(b.durationMin)) * dir;
+        return (
+          num(a.metrics.durationMin) -
+          num(b.metrics.durationMin)
+        ) * dir;
       }
       if (sortKey === "name") {
         return a.name.localeCompare(b.name) * dir;
@@ -234,7 +367,7 @@ function createWorkoutPicker(config) {
       return 0;
     });
 
-    return shown;
+    return items;
   }
 
   function refreshCategoryFilterOptions() {
@@ -242,7 +375,11 @@ function createWorkoutPicker(config) {
 
     const valueBefore = categoryFilter.value;
     const cats = Array.from(
-      new Set(pickerWorkouts.map((w) => w.category || "Uncategorized"))
+      new Set(
+        pickerWorkouts.map(
+          (cw) => getCanonicalCategory(cw) || "Uncategorized"
+        )
+      )
     ).sort((a, b) => a.localeCompare(b));
 
     categoryFilter.innerHTML = "";
@@ -270,7 +407,9 @@ function createWorkoutPicker(config) {
       const key = th.getAttribute("data-sort-key");
       th.classList.remove("sorted-asc", "sorted-desc");
       if (key === pickerSortKey) {
-        th.classList.add(pickerSortDir === "asc" ? "sorted-asc" : "sorted-desc");
+        th.classList.add(
+          pickerSortDir === "asc" ? "sorted-asc" : "sorted-desc"
+        );
       }
     });
   }
@@ -296,8 +435,8 @@ function createWorkoutPicker(config) {
       return;
     }
 
-    const shown = computeVisiblePickerWorkouts();
-    const shownCount = shown.length;
+    const shownItems = computeVisiblePickerWorkouts();
+    const shownCount = shownItems.length;
 
     tbody.innerHTML = "";
 
@@ -308,41 +447,53 @@ function createWorkoutPicker(config) {
     const colCount = 7;
     const currentFtp = getCurrentFtp();
 
-    for (const w of shown) {
-      const key = w.fileName || w.name;
+    for (const item of shownItems) {
+      const {canonical, key, name, description, source, category, segmentsForMetrics, metrics} =
+        item;
+
       const tr = document.createElement("tr");
       tr.className = "picker-row";
       tr.dataset.key = key;
 
       const tdName = document.createElement("td");
-      tdName.textContent = w.name;
-      tdName.title = w.fileName;
+      tdName.textContent = name;
+      tdName.title = canonical.filename || "";
       tr.appendChild(tdName);
 
       const tdCat = document.createElement("td");
-      tdCat.textContent = w.category || "Uncategorized";
+      tdCat.textContent = category || "Uncategorized";
       tr.appendChild(tdCat);
 
       const tdSource = document.createElement("td");
-      tdSource.textContent = w.source || "";
+      tdSource.textContent = source || "";
       tr.appendChild(tdSource);
 
       const tdIf = document.createElement("td");
-      tdIf.textContent = w.ifValue != null ? w.ifValue.toFixed(2) : "";
+      tdIf.textContent =
+        metrics.ifValue != null
+          ? metrics.ifValue.toFixed(2)
+          : "";
       tr.appendChild(tdIf);
 
       const tdTss = document.createElement("td");
-      tdTss.textContent = w.tss != null ? String(Math.round(w.tss)) : "";
+      tdTss.textContent =
+        metrics.tss != null
+          ? String(Math.round(metrics.tss))
+          : "";
       tr.appendChild(tdTss);
 
       const tdDur = document.createElement("td");
       tdDur.textContent =
-        w.durationMin != null ? `${Math.round(w.durationMin)} min` : "";
+        metrics.durationMin != null
+          ? `${Math.round(metrics.durationMin)} min`
+          : "";
       tr.appendChild(tdDur);
 
-      const adjKj = getAdjustedKjForPicker(w.baseKj, w.ftpFromFile, currentFtp);
       const tdKj = document.createElement("td");
-      tdKj.textContent = adjKj != null ? `${Math.round(adjKj)} kJ` : "";
+      tdKj.textContent =
+        metrics.kj != null
+          ? `${Math.round(metrics.kj)} kJ`
+          : "";
       tr.appendChild(tdKj);
 
       tbody.appendChild(tr);
@@ -372,8 +523,10 @@ function createWorkoutPicker(config) {
         // DELETE button
         const deleteBtn = document.createElement("button");
         deleteBtn.type = "button";
-        deleteBtn.className = "wb-code-insert-btn delete-workout-btn";
-        deleteBtn.title = "Delete this workout file from your library.";
+        deleteBtn.className =
+          "wb-code-insert-btn delete-workout-btn";
+        deleteBtn.title =
+          "Delete this workout file from your library.";
 
         const deleteIcon = createIconSvg("delete");
         const deleteText = document.createElement("span");
@@ -384,13 +537,14 @@ function createWorkoutPicker(config) {
 
         deleteBtn.addEventListener("click", (evt) => {
           evt.stopPropagation();
-          deleteWorkoutFile(w);
+          deleteWorkoutFile(canonical);
         });
 
         // EDIT button
         const editBtn = document.createElement("button");
         editBtn.type = "button";
-        editBtn.className = "wb-code-insert-btn edit-workout-btn";
+        editBtn.className =
+          "wb-code-insert-btn edit-workout-btn";
         editBtn.title = "Open this workout in the builder.";
 
         const editIcon = createIconSvg("edit");
@@ -402,7 +556,7 @@ function createWorkoutPicker(config) {
 
         editBtn.addEventListener("click", (evt) => {
           evt.stopPropagation();
-          openWorkoutInBuilder(w.canonicalWorkout);
+          openWorkoutInBuilder(canonical);
         });
 
         // SELECT button
@@ -410,10 +564,11 @@ function createWorkoutPicker(config) {
         selectBtn.type = "button";
         selectBtn.className = "select-workout-btn";
         selectBtn.textContent = "Select workout";
-        selectBtn.title = "Use this workout on the workout page.";
+        selectBtn.title =
+          "Use this workout on the workout page.";
         selectBtn.addEventListener("click", (evt) => {
           evt.stopPropagation();
-          doSelectWorkout(w.canonicalWorkout);
+          doSelectWorkout(canonical);
         });
 
         headerRow.appendChild(deleteBtn);
@@ -421,9 +576,10 @@ function createWorkoutPicker(config) {
         headerRow.appendChild(selectBtn);
         detailDiv.appendChild(headerRow);
 
-        if (w.description && w.description.trim()) {
-          const descHtml = w.description.replace(/\n/g, "<br>");
-          const descContainer = document.createElement("div");
+        if (description && description.trim()) {
+          const descHtml = description.replace(/\n/g, "<br>");
+          const descContainer =
+            document.createElement("div");
           descContainer.innerHTML = descHtml;
           detailDiv.appendChild(descContainer);
         } else {
@@ -439,7 +595,18 @@ function createWorkoutPicker(config) {
         expTr.appendChild(expTd);
         tbody.appendChild(expTr);
 
-        renderMiniWorkoutGraph(graphDiv, w, currentFtp);
+        // Build a lightweight meta object for the chart
+        const graphMeta = {
+          name,
+          description,
+          source,
+          category,
+          segmentsForMetrics,
+          segmentsForCategory: canonical.rawSegments || [],
+          canonicalWorkout: canonical,
+        };
+
+        renderMiniWorkoutGraph(graphDiv, graphMeta, currentFtp);
       }
 
       tr.addEventListener("click", () => {
@@ -466,7 +633,10 @@ function createWorkoutPicker(config) {
     try {
       workoutBuilder.loadFromWorkoutMeta(canonicalWorkout);
     } catch (err) {
-      console.error("[WorkoutPicker] Failed to load workout into builder:", err);
+      console.error(
+        "[WorkoutPicker] Failed to load workout into builder:",
+        err
+      );
     }
   }
 
@@ -480,9 +650,12 @@ function createWorkoutPicker(config) {
     if (durationFilter) durationFilter.style.display = "none";
 
     if (addWorkoutBtn) addWorkoutBtn.style.display = "none";
-    if (builderClearBtn) builderClearBtn.style.display = "inline-flex";
-    if (builderSaveBtn) builderSaveBtn.style.display = "inline-flex";
-    if (builderBackBtn) builderBackBtn.style.display = "inline-flex";
+    if (builderClearBtn)
+      builderClearBtn.style.display = "inline-flex";
+    if (builderSaveBtn)
+      builderSaveBtn.style.display = "inline-flex";
+    if (builderBackBtn)
+      builderBackBtn.style.display = "inline-flex";
 
     modal.classList.add("workout-picker-modal--builder");
 
@@ -504,10 +677,14 @@ function createWorkoutPicker(config) {
     if (categoryFilter) categoryFilter.style.display = "";
     if (durationFilter) durationFilter.style.display = "";
 
-    if (addWorkoutBtn) addWorkoutBtn.style.display = "inline-flex";
-    if (builderClearBtn) builderClearBtn.style.display = "none";
-    if (builderSaveBtn) builderSaveBtn.style.display = "none";
-    if (builderBackBtn) builderBackBtn.style.display = "none";
+    if (addWorkoutBtn)
+      addWorkoutBtn.style.display = "inline-flex";
+    if (builderClearBtn)
+      builderClearBtn.style.display = "none";
+    if (builderSaveBtn)
+      builderSaveBtn.style.display = "none";
+    if (builderBackBtn)
+      builderBackBtn.style.display = "none";
 
     modal.classList.remove("workout-picker-modal--builder");
   }
@@ -522,7 +699,8 @@ function createWorkoutPicker(config) {
       (cw.workoutTitle && cw.workoutTitle.trim()) ||
       (cw.source && cw.source.trim()) ||
       (cw.description && cw.description.trim()) ||
-      (Array.isArray(cw.rawSegments) && cw.rawSegments.length > 0);
+      (Array.isArray(cw.rawSegments) &&
+        cw.rawSegments.length > 0);
 
     if (!hasContent) return;
 
@@ -535,22 +713,21 @@ function createWorkoutPicker(config) {
   }
 
   function movePickerExpansion(delta) {
-    const shown = computeVisiblePickerWorkouts();
-    if (!shown.length) return;
+    const shownItems = computeVisiblePickerWorkouts();
+    if (!shownItems.length) return;
 
-    let idx = shown.findIndex((w) => {
-      const key = w.fileName || w.name;
-      return key === pickerExpandedKey;
-    });
+    let idx = shownItems.findIndex(
+      (item) => item.key === pickerExpandedKey
+    );
 
     if (idx === -1) {
-      idx = delta > 0 ? 0 : shown.length - 1;
+      idx = delta > 0 ? 0 : shownItems.length - 1;
     } else {
-      idx = (idx + delta + shown.length) % shown.length;
+      idx = (idx + delta + shownItems.length) % shownItems.length;
     }
 
-    const next = shown[idx];
-    pickerExpandedKey = next.fileName || next.name;
+    const next = shownItems[idx];
+    pickerExpandedKey = next.key;
     renderWorkoutPickerTable();
   }
 
@@ -558,13 +735,15 @@ function createWorkoutPicker(config) {
 
   function setupSorting() {
     if (!modal) return;
-    const headerCells = modal.querySelectorAll("th[data-sort-key]");
+    const headerCells =
+      modal.querySelectorAll("th[data-sort-key]");
     headerCells.forEach((th) => {
       th.addEventListener("click", () => {
         const key = th.getAttribute("data-sort-key");
         if (!key) return;
         if (pickerSortKey === key) {
-          pickerSortDir = pickerSortDir === "asc" ? "desc" : "asc";
+          pickerSortDir =
+            pickerSortDir === "asc" ? "desc" : "asc";
         } else {
           pickerSortKey = key;
           pickerSortDir = key === "kjAdj" ? "asc" : "desc";
@@ -581,7 +760,12 @@ function createWorkoutPicker(config) {
       if (!isPickerOpen) return;
 
       const tag = e.target?.tagName;
-      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      if (
+        tag === "INPUT" ||
+        tag === "SELECT" ||
+        tag === "TEXTAREA"
+      )
+        return;
 
       const key = e.key;
 
@@ -606,8 +790,10 @@ function createWorkoutPicker(config) {
     if (!saved) return;
 
     if (searchInput) searchInput.value = saved.searchTerm || "";
-    if (categoryFilter) categoryFilter.value = saved.category || "";
-    if (durationFilter) durationFilter.value = saved.duration || "";
+    if (categoryFilter) categoryFilter.value =
+      saved.category || "";
+    if (durationFilter) durationFilter.value =
+      saved.duration || "";
     if (saved.sortKey) pickerSortKey = saved.sortKey;
     if (saved.sortDir === "asc" || saved.sortDir === "desc") {
       pickerSortDir = saved.sortDir;
@@ -659,7 +845,8 @@ function createWorkoutPicker(config) {
   // --------------------------- save to library ---------------------------
 
   function sanitizeZwoFileName(name) {
-    const base = (name || "Custom workout").trim() || "Custom workout";
+    const base =
+      (name || "Custom workout").trim() || "Custom workout";
     return base
       .replace(/[\\\/:*?"<>|]/g, "_")
       .replace(/\s+/g, " ")
@@ -717,13 +904,19 @@ function createWorkoutPicker(config) {
     }
 
     try {
-      const srcFileHandle = await srcDirHandle.getFileHandle(fileName, {create: false});
+      const srcFileHandle =
+        await srcDirHandle.getFileHandle(fileName, {
+          create: false,
+        });
       const srcFile = await srcFileHandle.getFile();
 
       const dotIdx = fileName.lastIndexOf(".");
-      const base = dotIdx > 0 ? fileName.slice(0, dotIdx) : fileName;
+      const base =
+        dotIdx > 0 ? fileName.slice(0, dotIdx) : fileName;
       const ext = dotIdx > 0 ? fileName.slice(dotIdx) : "";
-      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const stamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-");
       let destFileName = `${base} (${stamp})${ext}`;
 
       if (destFileName.length > 120) {
@@ -731,9 +924,10 @@ function createWorkoutPicker(config) {
         destFileName = `${shortenedBase} (${stamp})${ext}`;
       }
 
-      const destFileHandle = await trashDirHandle.getFileHandle(destFileName, {
-        create: true,
-      });
+      const destFileHandle =
+        await trashDirHandle.getFileHandle(destFileName, {
+          create: true,
+        });
       const writable = await destFileHandle.createWritable();
       await writable.write(srcFile);
       await writable.close();
@@ -742,7 +936,10 @@ function createWorkoutPicker(config) {
 
       return true;
     } catch (err) {
-      console.error("[WorkoutPicker] Failed to move workout to trash:", err);
+      console.error(
+        "[WorkoutPicker] Failed to move workout to trash:",
+        err
+      );
       alert(
         "Moving this workout to the trash folder failed. See logs for details."
       );
@@ -750,8 +947,8 @@ function createWorkoutPicker(config) {
     }
   }
 
-  async function deleteWorkoutFile(workoutMeta) {
-    const fileName = workoutMeta.fileName;
+  async function deleteWorkoutFile(canonicalWorkout) {
+    const fileName = canonicalWorkout.filename;
 
     if (!fileName) {
       alert(
@@ -783,7 +980,9 @@ function createWorkoutPicker(config) {
 
   async function saveCurrentBuilderWorkoutToZwoDir() {
     if (!workoutBuilder) {
-      alert("Workout builder is not available. See logs for details.");
+      alert(
+        "Workout builder is not available. See logs for details."
+      );
       return;
     }
 
@@ -796,7 +995,11 @@ function createWorkoutPicker(config) {
       /** @type {import('./zwo.js').CanonicalWorkout} */
       const canonical = workoutBuilder.getState();
 
-      if (!canonical || !Array.isArray(canonical.rawSegments) || !canonical.rawSegments.length) {
+      if (
+        !canonical ||
+        !Array.isArray(canonical.rawSegments) ||
+        !canonical.rawSegments.length
+      ) {
         alert("This workout has no intervals to save.");
         return;
       }
@@ -846,7 +1049,8 @@ function createWorkoutPicker(config) {
 
       // Infer category from segments
       const inferredCategory =
-        inferCategoryFromSegments(canonical.rawSegments) || "Imported";
+        inferCategoryFromSegments(canonical.rawSegments) ||
+        "Imported";
 
       const zwoXml = canonicalWorkoutToZwoXml(canonical, {
         category: inferredCategory,
@@ -855,12 +1059,18 @@ function createWorkoutPicker(config) {
 
       // Write the new file
       try {
-        const fileHandle = await dirHandle.getFileHandle(fileName, {create: true});
+        const fileHandle =
+          await dirHandle.getFileHandle(fileName, {
+            create: true,
+          });
         const writable = await fileHandle.createWritable();
         await writable.write(zwoXml);
         await writable.close();
       } catch (err) {
-        console.error("[WorkoutPicker] Writing new file failed:", err);
+        console.error(
+          "[WorkoutPicker] Writing new file failed:",
+          err
+        );
         alert(
           `Saving workout "${fileName}" failed while writing the file.\n\n` +
           "See logs for details."
@@ -876,9 +1086,11 @@ function createWorkoutPicker(config) {
       resetPickerFilters();
       pickerExpandedKey = fileName;
       renderWorkoutPickerTable();
-
     } catch (err) {
-      console.error("[WorkoutPicker] Save to ZWO dir failed:", err);
+      console.error(
+        "[WorkoutPicker] Save to ZWO dir failed:",
+        err
+      );
       alert(
         "Unexpected failure while saving workout.\n\n" +
         "See logs for details."
