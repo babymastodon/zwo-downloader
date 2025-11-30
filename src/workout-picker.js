@@ -978,14 +978,13 @@ function createWorkoutPicker(config) {
 
   // --------------------------- public API ---------------------------
 
-  // --------------------------- public API ---------------------------
-
   /**
    * Open the workout picker.
    *
    * @param {string} [workoutTitle]  Optional workout title to focus/expand.
-   *                                 When provided, picker filters are cleared
-   *                                 and the matching workout row is expanded.
+   *                                 When provided, picker filters are only
+   *                                 cleared if the workout would not be visible
+   *                                 with the current picker controls.
    */
   async function open(workoutTitle) {
     exitBuilderMode();
@@ -999,23 +998,29 @@ function createWorkoutPicker(config) {
         summaryEl.textContent = "No ZWO folder selected.";
       }
     } else {
+      // Always rescan and restore previous picker state first
+      await rescanWorkouts(handle);
+
       if (hasTargetTitle) {
-        // Skip restoring previously persisted filters when we are
-        // trying to focus a specific workout.
-        await rescanWorkouts(handle, {skipRestoreState: true});
-        resetPickerFilters();
+        // Check if the requested workout is visible with current filters.
+        const isTargetVisible = computeVisiblePickerWorkouts().some(
+          (item) => item.canonical.workoutTitle === workoutTitle
+        );
+
+        // Only clear filters if the workout is hidden by them.
+        if (!isTargetVisible) {
+          resetPickerFilters();
+        }
+
         pickerExpandedTitle = workoutTitle;
         renderWorkoutPickerTable();
-      } else {
-        await rescanWorkouts(handle);
       }
     }
 
     isPickerOpen = true;
     if (overlay) overlay.style.display = "flex";
 
-    // Only auto-focus the search box when we're *not* targeting a
-    // specific workout title; in that case the expansion is the focus.
+    // Only auto-focus search when not targeting a specific workout.
     if (searchInput && !isBuilderMode && !hasTargetTitle) {
       searchInput.focus();
     }
