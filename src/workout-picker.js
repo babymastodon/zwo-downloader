@@ -46,7 +46,6 @@ let instance = null;
  * @property {string} workoutTitle
  * @property {Array<[number, number, number]>} rawSegments
  * @property {string} description
- * @property {string} filename
  */
 
 /**
@@ -59,8 +58,8 @@ let instance = null;
  * @property {HTMLSelectElement} durationFilter
  * @property {HTMLElement} summaryEl
  * @property {HTMLElement} tbody
- * @property {() => number} getCurrentFtp  // called whenever picker needs current FTP
- * @property {(payload: any) => void} onWorkoutSelected // called when user chooses a workout
+ * @property {() => number} getCurrentFtp
+ * @property {(payload: any) => void} onWorkoutSelected
  */
 
 /**
@@ -170,34 +169,27 @@ function createIconSvg(kind) {
   if (kind === "edit") {
     const p1 = document.createElementNS(svgNS, "path");
     p1.setAttribute("d", "M12 20h9");
-
     const p2 = document.createElementNS(svgNS, "path");
     p2.setAttribute(
       "d",
       "M16.5 3.5l4 4-11 11H5.5v-4.5l11-11z"
     );
-
     svg.appendChild(p1);
     svg.appendChild(p2);
   } else if (kind === "delete") {
     const p1 = document.createElementNS(svgNS, "path");
     p1.setAttribute("d", "M4 7h16");
-
     const p2 = document.createElementNS(svgNS, "path");
     p2.setAttribute("d", "M10 11v6");
-
     const p3 = document.createElementNS(svgNS, "path");
     p3.setAttribute("d", "M14 11v6");
-
     const p4 = document.createElementNS(svgNS, "path");
     p4.setAttribute("d", "M6 7l1-3h10l1 3");
-
     const p5 = document.createElementNS(svgNS, "path");
     p5.setAttribute(
       "d",
       "M8 7v11a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"
     );
-
     svg.appendChild(p1);
     svg.appendChild(p2);
     svg.appendChild(p3);
@@ -235,8 +227,8 @@ function createWorkoutPicker(config) {
 
   /** @type {CanonicalWorkout[]} */
   let pickerWorkouts = [];
-  let pickerExpandedKey = null;  // key = canonical.filename
-  let pickerSortKey = "kjAdj";   // header label preserved, but this is kJ @ current FTP
+  let pickerExpandedTitle = null;  // track by workoutTitle
+  let pickerSortKey = "kjAdj";     // header label preserved, but this is kJ @ current FTP
   let pickerSortDir = "asc";
   let isPickerOpen = false;
   let isBuilderMode = false;
@@ -255,15 +247,11 @@ function createWorkoutPicker(config) {
     return inferCategoryFromSegments(cw.rawSegments) || "Uncategorized";
   }
 
-  function getDisplayTitle(cw) {
-    return cw.workoutTitle || cw.filename || "Imported workout";
-  }
-
   /**
    * Structure returned from computeVisiblePickerWorkouts:
    *   { canonical, category, metrics }
    *
-   * All display fields (title, description, source, key, etc.) are taken
+   * All display fields (title, description, source, etc.) are taken
    * directly from `canonical` elsewhere. Only `category` + `metrics`
    * are derived here.
    */
@@ -280,7 +268,6 @@ function createWorkoutPicker(config) {
         currentFtp
       );
       const category = getCanonicalCategory(canonical);
-
       return {canonical, category, metrics};
     });
 
@@ -289,17 +276,15 @@ function createWorkoutPicker(config) {
     }
 
     if (durValue) {
-      items = items.filter((item) => {
-        return (
-          getDurationBucket(item.metrics.durationMin) === durValue
-        );
-      });
+      items = items.filter((item) =>
+        getDurationBucket(item.metrics.durationMin) === durValue
+      );
     }
 
     if (searchTerm) {
       items = items.filter((item) => {
         const {canonical} = item;
-        const title = getDisplayTitle(canonical);
+        const title = canonical.workoutTitle;
         const source = canonical.source || "";
         const description = canonical.description || "";
         const haystack = [
@@ -334,9 +319,9 @@ function createWorkoutPicker(config) {
         ) * dir;
       }
       if (sortKey === "name") {
-        const titleA = getDisplayTitle(a.canonical);
-        const titleB = getDisplayTitle(b.canonical);
-        return titleA.localeCompare(titleB) * dir;
+        return a.canonical.workoutTitle.localeCompare(
+          b.canonical.workoutTitle
+        ) * dir;
       }
       return 0;
     });
@@ -423,18 +408,17 @@ function createWorkoutPicker(config) {
 
     for (const item of shownItems) {
       const {canonical, category, metrics} = item;
-      const key = canonical.filename; // key = filename (may be "")
-      const title = getDisplayTitle(canonical);
+      const title = canonical.workoutTitle;
       const source = canonical.source || "";
       const description = canonical.description || "";
 
       const tr = document.createElement("tr");
       tr.className = "picker-row";
-      tr.dataset.key = key;
+      tr.dataset.title = title;
 
       const tdName = document.createElement("td");
       tdName.textContent = title;
-      tdName.title = canonical.filename || "";
+      tdName.title = title;
       tr.appendChild(tdName);
 
       const tdCat = document.createElement("td");
@@ -475,7 +459,7 @@ function createWorkoutPicker(config) {
 
       tbody.appendChild(tr);
 
-      const expanded = pickerExpandedKey === key;
+      const expanded = pickerExpandedTitle === title;
       if (expanded) {
         const expTr = document.createElement("tr");
         expTr.className = "picker-expanded-row";
@@ -575,7 +559,8 @@ function createWorkoutPicker(config) {
       }
 
       tr.addEventListener("click", () => {
-        pickerExpandedKey = pickerExpandedKey === key ? null : key;
+        pickerExpandedTitle =
+          pickerExpandedTitle === title ? null : title;
         renderWorkoutPickerTable();
       });
     }
@@ -670,7 +655,7 @@ function createWorkoutPicker(config) {
     if (!shownItems.length) return;
 
     let idx = shownItems.findIndex(
-      (item) => item.canonical.filename === pickerExpandedKey
+      (item) => item.canonical.workoutTitle === pickerExpandedTitle
     );
 
     if (idx === -1) {
@@ -679,8 +664,7 @@ function createWorkoutPicker(config) {
       idx = (idx + delta + shownItems.length) % shownItems.length;
     }
 
-    const next = shownItems[idx];
-    pickerExpandedKey = next.canonical.filename;
+    pickerExpandedTitle = shownItems[idx].canonical.workoutTitle;
     renderWorkoutPickerTable();
   }
 
@@ -771,7 +755,7 @@ function createWorkoutPicker(config) {
       return;
     }
 
-    pickerExpandedKey = null;
+    pickerExpandedTitle = null;
     pickerWorkouts = await scanWorkoutsFromDirectory(handle);
     refreshCategoryFilterOptions();
 
@@ -877,14 +861,8 @@ function createWorkoutPicker(config) {
   }
 
   async function deleteWorkoutFile(canonicalWorkout) {
-    const fileName = canonicalWorkout.filename;
-
-    if (!fileName) {
-      alert(
-        "This workout does not have an associated file name, so it cannot be moved to trash."
-      );
-      return;
-    }
+    const title = canonicalWorkout.workoutTitle;
+    const fileName = sanitizeZwoFileName(title) + ".zwo";
 
     const dirHandle = await loadZwoDirHandle();
     if (!dirHandle) {
@@ -951,7 +929,7 @@ function createWorkoutPicker(config) {
       }
 
       resetPickerFilters();
-      pickerExpandedKey = result.fileName || null;
+      pickerExpandedTitle = canonical.workoutTitle;
       renderWorkoutPickerTable();
     } catch (err) {
       console.error(
@@ -965,14 +943,13 @@ function createWorkoutPicker(config) {
     }
   }
 
-  function sanitizeZwoFileName(name) {
-    const base =
-      (name || "Custom workout").trim() || "Custom workout";
-    return base
-      .replace(/[\\\/:*?"<>|]/g, "_")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 80);
+  /**
+   * Injective mapping from title → file-safe base name.
+   * encodeURIComponent is injective on strings and yields only
+   * filesystem-safe characters.
+   */
+  function sanitizeZwoFileName(title) {
+    return encodeURIComponent(title);
   }
 
   /**
@@ -1008,9 +985,7 @@ function createWorkoutPicker(config) {
       return {ok: false};
     }
 
-    const baseName = sanitizeZwoFileName(
-      canonical.workoutTitle || "Custom workout"
-    );
+    const baseName = sanitizeZwoFileName(canonical.workoutTitle);
     const fileName = baseName + ".zwo";
 
     // Detect overwrite case
@@ -1163,4 +1138,3 @@ function createWorkoutPicker(config) {
     saveCanonicalWorkoutToZwoDir,
   };
 }
-
