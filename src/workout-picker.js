@@ -137,10 +137,7 @@ async function scanWorkoutsFromDirectory(handle) {
       const file = await entry.getFile();
       const text = await file.text();
 
-      const canonicalWorkout = parseZwoXmlToCanonicalWorkout(
-        text,
-        entry.name
-      );
+      const canonicalWorkout = parseZwoXmlToCanonicalWorkout(text);
       if (!canonicalWorkout) continue;
 
       workouts.push(canonicalWorkout);

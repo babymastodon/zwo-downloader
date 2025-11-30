@@ -22,8 +22,6 @@
  *   - endPower: % FTP or equivalent "end power" (0–100 usually)
  * @property {string} description
  *   Human-readable description/notes
- * @property {string} filename
- *   Suggested filename (e.g. original ZWO filename), may be ""
  */
 
 // ---------------- Safety limits for ZWO parsing ----------------
@@ -37,18 +35,12 @@ const ZWO_MAX_INTERVAL_REPEATS = 500; // sanity cap on repeats
 function escapeXml(text) {
   return (text || "").replace(/[<>&'"]/g, (ch) => {
     switch (ch) {
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case "&":
-        return "&amp;";
-      case '"':
-        return "&quot;";
-      case "'":
-        return "&apos;";
-      default:
-        return ch;
+      case "<": return "&lt;";
+      case ">": return "&gt;";
+      case "&": return "&amp;";
+      case '"': return "&quot;";
+      case "'": return "&apos;";
+      default: return ch;
     }
   });
 }
@@ -65,7 +57,6 @@ function unescapeXml(text) {
 
 function cdataWrap(text) {
   if (!text) return "<![CDATA[]]>";
-  // Prevent accidental CDATA close inside content
   const safe = String(text).replace("]]>", "]]&gt;");
   return "<![CDATA[" + safe + "]]>";
 }
@@ -177,14 +168,11 @@ export function parseZwoSnippet(text) {
     });
   }
 
-  // Convert parsed metric segments -> canonical rawSegments
-  const rawSegments = segments.map((seg) => {
-    return [
-      seg.durationSec / 60,      // minutes
-      seg.pStartRel * 100,       // startPct
-      seg.pEndRel * 100          // endPct
-    ];
-  });
+  const rawSegments = segments.map((seg) => ([
+    seg.durationSec / 60,   // minutes
+    seg.pStartRel * 100,    // startPct
+    seg.pEndRel * 100       // endPct
+  ]));
 
   return {rawSegments, errors};
 }
@@ -202,9 +190,7 @@ function parseZwoAttributes(attrText) {
   while ((m = attrRegex.exec(attrText)) !== null) {
     if (m.index > lastIndex) {
       const between = attrText.slice(lastIndex, m.index);
-      if (between.trim().length > 0) {
-        hasGarbage = true;
-      }
+      if (between.trim().length > 0) hasGarbage = true;
     }
 
     attrs[m[1]] = m[2];
@@ -212,36 +198,16 @@ function parseZwoAttributes(attrText) {
   }
 
   const trailing = attrText.slice(lastIndex);
-  if (trailing.trim().length > 0) {
-    hasGarbage = true;
-  }
+  if (trailing.trim().length > 0) hasGarbage = true;
 
   return {attrs, hasGarbage};
 }
 
-function handleZwoSteady(
-  attrs,
-  segments,
-  errors,
-  start,
-  end
-) {
-  const durStr = attrs.Duration;
-  const pStr = attrs.Power;
-  const duration = durStr != null ? Number(durStr) : NaN;
-  const power = pStr != null ? Number(pStr) : NaN;
+function handleZwoSteady(attrs, segments, errors, start, end) {
+  const duration = attrs.Duration != null ? Number(attrs.Duration) : NaN;
+  const power = attrs.Power != null ? Number(attrs.Power) : NaN;
 
-  if (
-    !validateZwoDuration(
-      duration,
-      "SteadyState",
-      start,
-      end,
-      errors
-    )
-  ) {
-    return;
-  }
+  if (!validateZwoDuration(duration, "SteadyState", start, end, errors)) return;
   if (!Number.isFinite(power) || power <= 0) {
     errors.push({
       start,
@@ -259,32 +225,12 @@ function handleZwoSteady(
   });
 }
 
-function handleZwoRamp(
-  tagName,
-  attrs,
-  segments,
-  errors,
-  start,
-  end
-) {
-  const durStr = attrs.Duration;
-  const loStr = attrs.PowerLow;
-  const hiStr = attrs.PowerHigh;
-  const duration = durStr != null ? Number(durStr) : NaN;
-  const pLow = loStr != null ? Number(loStr) : NaN;
-  const pHigh = hiStr != null ? Number(hiStr) : NaN;
+function handleZwoRamp(tagName, attrs, segments, errors, start, end) {
+  const duration = attrs.Duration != null ? Number(attrs.Duration) : NaN;
+  const pLow = attrs.PowerLow != null ? Number(attrs.PowerLow) : NaN;
+  const pHigh = attrs.PowerHigh != null ? Number(attrs.PowerHigh) : NaN;
 
-  if (
-    !validateZwoDuration(
-      duration,
-      tagName,
-      start,
-      end,
-      errors
-    )
-  ) {
-    return;
-  }
+  if (!validateZwoDuration(duration, tagName, start, end, errors)) return;
   if (!Number.isFinite(pLow) || !Number.isFinite(pHigh)) {
     errors.push({
       start,
@@ -301,13 +247,7 @@ function handleZwoRamp(
   });
 }
 
-function validateZwoDuration(
-  duration,
-  tagName,
-  start,
-  end,
-  errors
-) {
+function validateZwoDuration(duration, tagName, start, end, errors) {
   if (!Number.isFinite(duration) || duration <= 0) {
     errors.push({
       start,
@@ -327,30 +267,14 @@ function validateZwoDuration(
   return true;
 }
 
-function handleZwoIntervals(
-  attrs,
-  segments,
-  errors,
-  start,
-  end
-) {
-  const repStr = attrs.Repeat;
-  const onDurStr = attrs.OnDuration;
-  const offDurStr = attrs.OffDuration;
-  const onPowStr = attrs.OnPower;
-  const offPowStr = attrs.OffPower;
+function handleZwoIntervals(attrs, segments, errors, start, end) {
+  const repeat = attrs.Repeat != null ? Number(attrs.Repeat) : NaN;
+  const onDur = attrs.OnDuration != null ? Number(attrs.OnDuration) : NaN;
+  const offDur = attrs.OffDuration != null ? Number(attrs.OffDuration) : NaN;
+  const onPow = attrs.OnPower != null ? Number(attrs.OnPower) : NaN;
+  const offPow = attrs.OffPower != null ? Number(attrs.OffPower) : NaN;
 
-  const repeat = repStr != null ? Number(repStr) : NaN;
-  const onDur = onDurStr != null ? Number(onDurStr) : NaN;
-  const offDur = offDurStr != null ? Number(offDurStr) : NaN;
-  const onPow = onPowStr != null ? Number(onPowStr) : NaN;
-  const offPow = offPowStr != null ? Number(offPowStr) : NaN;
-
-  if (
-    !Number.isFinite(repeat) ||
-    repeat <= 0 ||
-    repeat > ZWO_MAX_INTERVAL_REPEATS
-  ) {
+  if (!Number.isFinite(repeat) || repeat <= 0 || repeat > ZWO_MAX_INTERVAL_REPEATS) {
     errors.push({
       start,
       end,
@@ -359,34 +283,11 @@ function handleZwoIntervals(
     return;
   }
 
-  if (
-    !validateZwoDuration(
-      onDur,
-      "IntervalsT OnDuration",
-      start,
-      end,
-      errors
-    )
-  ) {
-    return;
-  }
-  if (
-    !validateZwoDuration(
-      offDur,
-      "IntervalsT OffDuration",
-      start,
-      end,
-      errors
-    )
-  ) {
-    return;
-  }
+  if (!validateZwoDuration(onDur, "IntervalsT OnDuration", start, end, errors)) return;
+  if (!validateZwoDuration(offDur, "IntervalsT OffDuration", start, end, errors)) return;
 
   const totalBlockSec = repeat * (onDur + offDur);
-  if (
-    !Number.isFinite(totalBlockSec) ||
-    totalBlockSec > ZWO_MAX_WORKOUT_DURATION_SEC
-  ) {
+  if (!Number.isFinite(totalBlockSec) || totalBlockSec > ZWO_MAX_WORKOUT_DURATION_SEC) {
     errors.push({
       start,
       end,
@@ -443,8 +344,7 @@ export function segmentsToZwoSnippet(segments) {
 
     const minutes = Number(seg[0]);
     let startVal = Number(seg[1]);
-    let endVal =
-      seg.length > 2 && seg[2] != null ? Number(seg[2]) : startVal;
+    let endVal = seg.length > 2 && seg[2] != null ? Number(seg[2]) : startVal;
 
     if (
       !Number.isFinite(minutes) ||
@@ -455,8 +355,6 @@ export function segmentsToZwoSnippet(segments) {
       continue;
     }
 
-    // Convert to relative FTP (0–1) with a simple heuristic:
-    // if value <= 5, assume already 0–1; otherwise assume 0–100%.
     const toRel = (v) => (v <= 5 ? v : v / 100);
 
     const durationSec = minutes * 60;
@@ -466,14 +364,8 @@ export function segmentsToZwoSnippet(segments) {
     if (durationSec <= 0) continue;
 
     if (Math.abs(pStartRel - pEndRel) < 1e-6) {
-      // steady
-      blocks.push({
-        kind: "steady",
-        durationSec,
-        powerRel: pStartRel,
-      });
+      blocks.push({kind: "steady", durationSec, powerRel: pStartRel});
     } else if (pEndRel > pStartRel) {
-      // ramp up
       blocks.push({
         kind: "rampUp",
         durationSec,
@@ -481,7 +373,6 @@ export function segmentsToZwoSnippet(segments) {
         powerHighRel: pEndRel,
       });
     } else {
-      // ramp down
       blocks.push({
         kind: "rampDown",
         durationSec,
@@ -495,8 +386,8 @@ export function segmentsToZwoSnippet(segments) {
 
   // ---------- 2) compress blocks -> ZWO lines ----------
   const lines = [];
-  const DUR_TOL = 1; // seconds
-  const PWR_TOL = 0.01; // relative FTP (0.01 = 1%)
+  const DUR_TOL = 1;   // seconds
+  const PWR_TOL = 0.01; // relative FTP
 
   let i = 0;
 
@@ -510,7 +401,6 @@ export function segmentsToZwoSnippet(segments) {
         let repeat = 1;
         let j = i + 2;
 
-        // Scan forward for more identical A/B pairs
         while (j + 1 < blocks.length) {
           const nextA = blocks[j];
           const nextB = blocks[j + 1];
@@ -520,9 +410,7 @@ export function segmentsToZwoSnippet(segments) {
             nextB.kind !== "steady" ||
             !blocksSimilarSteady(firstA, nextA, DUR_TOL, PWR_TOL) ||
             !blocksSimilarSteady(firstB, nextB, DUR_TOL, PWR_TOL)
-          ) {
-            break;
-          }
+          ) break;
 
           repeat++;
           j += 2;
@@ -546,7 +434,6 @@ export function segmentsToZwoSnippet(segments) {
       }
     }
 
-    // Fallback: single block -> SteadyState / Warmup / Cooldown
     const b = blocks[i];
 
     if (b.kind === "steady") {
@@ -603,23 +490,21 @@ function blocksSimilarSteady(a, b, durTolSec, pwrTol) {
  * @returns {string} ZWO XML content
  */
 export function canonicalWorkoutToZwoXml(meta) {
-
   const {
     source = "Unknown",
     sourceURL = "",
     workoutTitle = "",
     rawSegments = [],
     description = "",
-    filename = "",
   } = meta || {};
 
   const name =
     (workoutTitle || "Custom workout").trim() || "Custom workout";
-  const author = (source || "External workout").trim() || "External workout";
+  const author =
+    (source || "External workout").trim() || "External workout";
 
   const workoutSnippet = segmentsToZwoSnippet(rawSegments);
 
-  // Include URL in description so it's visible in Zwift UI
   let descCombined = description || "";
   if (sourceURL) {
     const urlLine = `Original workout URL: ${sourceURL}`;
@@ -628,8 +513,6 @@ export function canonicalWorkoutToZwoXml(meta) {
       : urlLine;
   }
 
-  // Include URL as a tag (Zwift will just ignore unknown tags,
-  // but tools can use it later).
   const urlTag = sourceURL
     ? `    <tag name="OriginalURL:${escapeXml(sourceURL)}"/>\n`
     : "";
@@ -639,10 +522,6 @@ export function canonicalWorkoutToZwoXml(meta) {
       .split("\n")
       .map((line) => "    " + line)
       .join("\n")
-    : "";
-
-  const fileNameTag = filename
-    ? `  <!-- filename: ${escapeXml(filename)} -->\n`
     : "";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -656,7 +535,7 @@ ${urlTag}  </tags>
   <workout>
 ${indentedBody}
   </workout>
-${fileNameTag}</workout_file>
+</workout_file>
 `;
 }
 
@@ -668,16 +547,17 @@ ${fileNameTag}</workout_file>
  * focuses on the common fields produced by canonicalWorkoutToZwoXml.
  *
  * @param {string} xmlText
- * @param {string} [filename]
  * @returns {CanonicalWorkout|null}
  */
-export function parseZwoXmlToCanonicalWorkout(xmlText, filename = "") {
+export function parseZwoXmlToCanonicalWorkout(xmlText) {
   if (!xmlText) return null;
 
   // Title
   const nameMatch = xmlText.match(/<name>([\s\S]*?)<\/name>/i);
   const workoutTitle = unescapeXml(
-    cdataUnwrap((nameMatch ? nameMatch[1] : "Imported workout").trim())
+    cdataUnwrap(
+      (nameMatch ? nameMatch[1] : "Imported workout").trim()
+    )
   );
 
   // Description (strip "Original workout URL:" line if present)
@@ -719,15 +599,12 @@ export function parseZwoXmlToCanonicalWorkout(xmlText, filename = "") {
   const {rawSegments} = parseZwoSnippet(workoutInner);
 
   /** @type {CanonicalWorkout} */
-  const cw = {
+  return {
     source,
     sourceURL,
     workoutTitle,
     rawSegments,
     description,
-    filename: filename || "",
   };
-
-  return cw;
 }
 
