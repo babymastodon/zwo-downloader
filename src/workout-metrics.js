@@ -366,6 +366,13 @@ export function parseZwo(xmlText, fileName) {
     category,
     segmentsForMetrics,
     segmentsForCategory,
+    canonicalWorkout: {
+      source: source || "Unknown",
+      sourceURL: "",
+      workoutTitle: name,
+      rawSegments: segmentsForCategory,
+      description: description || "",
+    }
   };
 }
 

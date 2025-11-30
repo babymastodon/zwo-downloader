@@ -1,6 +1,8 @@
 // workout-engine.js
 // Business logic + state for running a workout.
 // No direct DOM access; communicates via callbacks.
+/** @typedef {import("./zwo.js").CanonicalWorkout} CanonicalWorkout */
+
 
 import {BleManager} from "./ble-manager.js";
 import {Beeper} from "./beeper.js";
@@ -200,6 +202,43 @@ function createWorkoutEngine() {
     await writable.close();
 
     log(`Workout saved to ${fileName}`);
+  }
+
+  /**
+ * Convert a CanonicalWorkout (from the builder / picker) into
+ * the internal workoutMeta shape used by the engine.
+ *
+ * CanonicalWorkout.rawSegments are [minutes, startPct, endPct].
+ * workoutMeta.segmentsForMetrics expect {durationSec, pStartRel, pEndRel}.
+ *
+ * @param {CanonicalWorkout} canonical
+ * @param {number} ftpFallback
+ */
+  function canonicalToWorkoutMeta(canonical, ftpFallback) {
+    const raw = Array.isArray(canonical.rawSegments) ? canonical.rawSegments : [];
+
+    const segmentsForMetrics = raw.map(([minutes, startPct, endPct]) => ({
+      durationSec: minutes * 60,      // 1 → 60 sec
+      pStartRel: (startPct || 0) / 100, // 40 → 0.40
+      pEndRel: (endPct || 0) / 100,     // 40 → 0.40
+    }));
+
+    const name =
+      (canonical.workoutTitle || "Custom workout").trim() ||
+      "Custom workout";
+
+    return {
+      // what the rest of the app expects
+      name,
+      description: canonical.description || "",
+      source: canonical.source || "",
+      segmentsForMetrics,
+
+      // useful extras to keep around
+      rawSegments: canonical.rawSegments || [],
+      sourceURL: canonical.sourceURL || "",
+      ftpAtSelection: ftpFallback || DEFAULT_FTP,
+    };
   }
 
   // --------- auto-start / beeps ---------
@@ -515,8 +554,8 @@ function createWorkoutEngine() {
 
     const selected = await loadSelectedWorkout();
     if (selected) {
-      workoutMeta = selected;
       currentFtp = selected.ftpAtSelection || DEFAULT_FTP;
+      workoutMeta = canonicalToWorkoutMeta(selected, currentFtp);
       rebuildScaledSegments();
     }
 
@@ -588,15 +627,35 @@ function createWorkoutEngine() {
       sendTrainerState(true).catch(() => {});
       emitStateChanged();
     },
-    setWorkoutFromPicker(payload) {
-      workoutMeta = payload;
-      currentFtp = payload.ftpAtSelection || currentFtp || DEFAULT_FTP;
+    /**
+     * Accept a CanonicalWorkout from the picker / builder and
+     * convert it to the internal workoutMeta shape.
+     *
+     * @param {CanonicalWorkout} canonical
+     */
+    setWorkoutFromPicker(canonical) {
+      if (!canonical || !Array.isArray(canonical.rawSegments)) {
+        console.warn("[WorkoutEngine] Invalid CanonicalWorkout payload:", canonical);
+        return;
+      }
+
+      // Preserve current FTP if already set, otherwise fall back.
+      const ftpToUse = currentFtp || DEFAULT_FTP;
+
+      workoutMeta = canonicalToWorkoutMeta(canonical, ftpToUse);
+      currentFtp = workoutMeta.ftpAtSelection || ftpToUse || DEFAULT_FTP;
+
+      // Reset engine state
       elapsedSec = 0;
       currentIntervalIndex = 0;
       liveSamples = [];
       zeroPowerSeconds = 0;
       autoPauseDisabledUntilSec = 0;
+
+      // Rebuild scaled segments from the new meta
       rebuildScaledSegments();
+
+      // Clear any persisted "active workout" because we're switching
       clearActiveState();
       emitStateChanged();
     },

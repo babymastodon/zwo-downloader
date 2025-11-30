@@ -402,7 +402,7 @@ function createWorkoutPicker(config) {
 
         editBtn.addEventListener("click", (evt) => {
           evt.stopPropagation();
-          openWorkoutInBuilder(w);
+          openWorkoutInBuilder(w.canonicalWorkout);
         });
 
         // SELECT button
@@ -413,7 +413,7 @@ function createWorkoutPicker(config) {
         selectBtn.title = "Use this workout on the workout page.";
         selectBtn.addEventListener("click", (evt) => {
           evt.stopPropagation();
-          doSelectWorkout(w);
+          doSelectWorkout(w.canonicalWorkout);
         });
 
         headerRow.appendChild(deleteBtn);
@@ -455,7 +455,7 @@ function createWorkoutPicker(config) {
     updateSortHeaderIndicator();
   }
 
-  async function openWorkoutInBuilder(workoutMeta) {
+  async function openWorkoutInBuilder(canonicalWorkout) {
     if (!workoutBuilder) {
       console.warn("[WorkoutPicker] Workout builder is not available.");
       return;
@@ -464,7 +464,7 @@ function createWorkoutPicker(config) {
     enterBuilderMode();
 
     try {
-      workoutBuilder.loadFromWorkoutMeta(workoutMeta);
+      workoutBuilder.loadFromWorkoutMeta(canonicalWorkout);
     } catch (err) {
       console.error("[WorkoutPicker] Failed to load workout into builder:", err);
     }
@@ -650,21 +650,9 @@ function createWorkoutPicker(config) {
     renderWorkoutPickerTable();
   }
 
-  function doSelectWorkout(workoutMetaFull) {
-    const payload = {
-      name: workoutMetaFull.name,
-      fileName: workoutMetaFull.fileName,
-      totalSec: workoutMetaFull.totalSec,
-      segmentsForMetrics: workoutMetaFull.segmentsForMetrics || [],
-      ftpFromFile: workoutMetaFull.ftpFromFile,
-      tss: workoutMetaFull.tss,
-      ifValue: workoutMetaFull.ifValue,
-      baseKj: workoutMetaFull.baseKj,
-      category: workoutMetaFull.category,
-    };
-
-    saveSelectedWorkout(payload);
-    onWorkoutSelected(payload);
+  function doSelectWorkout(canonicalWorkout) {
+    saveSelectedWorkout(canonicalWorkout);
+    onWorkoutSelected(canonicalWorkout);
     close();
   }
 
