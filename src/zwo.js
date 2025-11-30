@@ -1,7 +1,8 @@
 // zwo.js
 //
 // Canonical workout representation + conversion to ZWO,
-// plus parsers for TrainerRoad / TrainerDay / WhatsOnZwift.
+// plus parsers for TrainerRoad / TrainerDay / WhatsOnZwift,
+// and helpers for inline ZWO parsing + URL-based import.
 //
 // This file is intentionally standalone (no external imports).
 
@@ -30,6 +31,12 @@ const TRAINERROAD_WORKOUT_REGEX =
   /\/app\/cycling\/workouts\/add\/(\d+)(?:\/|$)/;
 const TRAINERDAY_WORKOUT_REGEX = /^\/workouts\/([^/?#]+)/;
 const WHATSONZWIFT_WORKOUT_REGEX = /^\/workouts\/.+/;
+
+// ---------------- Safety limits for ZWO parsing ----------------
+
+const ZWO_MAX_SEGMENT_DURATION_SEC = 12 * 3600; // 12 hours per segment
+const ZWO_MAX_WORKOUT_DURATION_SEC = 24 * 3600; // 24 hours total workout
+const ZWO_MAX_INTERVAL_REPEATS = 500; // sanity cap on repeats
 
 // ---------------- Small helpers ----------------
 
@@ -83,6 +90,337 @@ async function fetchTrainerDayWorkoutBySlug(slug) {
   return fetchJson(url, {credentials: "omit"});
 }
 
+// ---------------- Inline ZWO snippet parser ----------------
+
+/**
+ * Parse a ZWO-style snippet containing SteadyState / Warmup / Cooldown / IntervalsT
+ * into canonical segments and syntax errors.
+ *
+ * Returns segments as:
+ *   { durationSec: number, pStartRel: number, pEndRel: number }[]
+ * where power is relative FTP (0–1).
+ *
+ * Errors have:
+ *   { start: number, end: number, message: string }
+ *
+ * Safety limits:
+ *   - Max per-segment duration  : 12 hours
+ *   - Max total IntervalsT time : 24 hours
+ *   - Max IntervalsT repeats    : 500
+ *
+ * @param {string} text
+ * @returns {{segments:Array<{durationSec:number,pStartRel:number,pEndRel:number}>,errors:Array<{start:number,end:number,message:string}>}}
+ */
+export function parseZwoSnippet(text) {
+  /** @type {Array<{durationSec:number,pStartRel:number,pEndRel:number}>} */
+  const segments = [];
+  const errors = [];
+
+  const raw = (text || "")
+    .replace(/<\s*workout[^>]*>/gi, "")
+    .replace(/<\/\s*workout\s*>/gi, "");
+  const trimmed = raw.trim();
+  if (!trimmed) return {segments, errors};
+
+  const tagRegex = /<([A-Za-z]+)\b([^>]*)\/>/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = tagRegex.exec(trimmed)) !== null) {
+    const full = match[0];
+    const tagName = match[1];
+    const attrsText = match[2] || "";
+    const startIdx = match.index;
+    const endIdx = startIdx + full.length;
+
+    const between = trimmed.slice(lastIndex, startIdx);
+    if (between.trim().length > 0) {
+      errors.push({
+        start: lastIndex,
+        end: startIdx,
+        message:
+          "Unexpected text between elements; only ZWO workout elements are allowed.",
+      });
+    }
+
+    const {attrs, hasGarbage} = parseZwoAttributes(attrsText);
+
+    if (hasGarbage) {
+      errors.push({
+        start: startIdx,
+        end: endIdx,
+        message:
+          "Malformed element: unexpected text or tokens inside element.",
+      });
+      lastIndex = endIdx;
+      continue;
+    }
+
+    switch (tagName) {
+      case "SteadyState":
+        handleZwoSteady(attrs, segments, errors, startIdx, endIdx);
+        break;
+      case "Warmup":
+      case "Cooldown":
+        handleZwoRamp(tagName, attrs, segments, errors, startIdx, endIdx);
+        break;
+      case "IntervalsT":
+        handleZwoIntervals(attrs, segments, errors, startIdx, endIdx);
+        break;
+      default:
+        errors.push({
+          start: startIdx,
+          end: endIdx,
+          message: `Unknown element <${tagName}>`,
+        });
+        break;
+    }
+
+    lastIndex = endIdx;
+  }
+
+  const trailing = trimmed.slice(lastIndex);
+  if (trailing.trim().length > 0) {
+    errors.push({
+      start: lastIndex,
+      end: lastIndex + trailing.length,
+      message: "Trailing text after last element.",
+    });
+  }
+
+  return {segments, errors};
+}
+
+function parseZwoAttributes(attrText) {
+  const attrs = {};
+  let hasGarbage = false;
+
+  const attrRegex =
+    /([A-Za-z_:][A-Za-z0-9_:.-]*)\s*=\s*"([^"]*)"/g;
+
+  let m;
+  let lastIndex = 0;
+
+  while ((m = attrRegex.exec(attrText)) !== null) {
+    if (m.index > lastIndex) {
+      const between = attrText.slice(lastIndex, m.index);
+      if (between.trim().length > 0) {
+        hasGarbage = true;
+      }
+    }
+
+    attrs[m[1]] = m[2];
+    lastIndex = attrRegex.lastIndex;
+  }
+
+  const trailing = attrText.slice(lastIndex);
+  if (trailing.trim().length > 0) {
+    hasGarbage = true;
+  }
+
+  return {attrs, hasGarbage};
+}
+
+function handleZwoSteady(
+  attrs,
+  segments,
+  errors,
+  start,
+  end
+) {
+  const durStr = attrs.Duration;
+  const pStr = attrs.Power;
+  const duration = durStr != null ? Number(durStr) : NaN;
+  const power = pStr != null ? Number(pStr) : NaN;
+
+  if (
+    !validateZwoDuration(
+      duration,
+      "SteadyState",
+      start,
+      end,
+      errors
+    )
+  ) {
+    return;
+  }
+  if (!Number.isFinite(power) || power <= 0) {
+    errors.push({
+      start,
+      end,
+      message:
+        "SteadyState must have a positive numeric Power (relative FTP, e.g. 0.75).",
+    });
+    return;
+  }
+
+  segments.push({
+    durationSec: duration,
+    pStartRel: power,
+    pEndRel: power,
+  });
+}
+
+function handleZwoRamp(
+  tagName,
+  attrs,
+  segments,
+  errors,
+  start,
+  end
+) {
+  const durStr = attrs.Duration;
+  const loStr = attrs.PowerLow;
+  const hiStr = attrs.PowerHigh;
+  const duration = durStr != null ? Number(durStr) : NaN;
+  const pLow = loStr != null ? Number(loStr) : NaN;
+  const pHigh = hiStr != null ? Number(hiStr) : NaN;
+
+  if (
+    !validateZwoDuration(
+      duration,
+      tagName,
+      start,
+      end,
+      errors
+    )
+  ) {
+    return;
+  }
+  if (!Number.isFinite(pLow) || !Number.isFinite(pHigh)) {
+    errors.push({
+      start,
+      end,
+      message: `${tagName} must have PowerLow and PowerHigh as numbers (relative FTP).`,
+    });
+    return;
+  }
+
+  segments.push({
+    durationSec: duration,
+    pStartRel: pLow,
+    pEndRel: pHigh,
+  });
+}
+
+function validateZwoDuration(
+  duration,
+  tagName,
+  start,
+  end,
+  errors
+) {
+  if (!Number.isFinite(duration) || duration <= 0) {
+    errors.push({
+      start,
+      end,
+      message: `${tagName} must have a positive numeric Duration (seconds).`,
+    });
+    return false;
+  }
+  if (duration > ZWO_MAX_SEGMENT_DURATION_SEC) {
+    errors.push({
+      start,
+      end,
+      message: `${tagName} Duration is unrealistically large (max ${ZWO_MAX_SEGMENT_DURATION_SEC} seconds).`,
+    });
+    return false;
+  }
+  return true;
+}
+
+function handleZwoIntervals(
+  attrs,
+  segments,
+  errors,
+  start,
+  end
+) {
+  const repStr = attrs.Repeat;
+  const onDurStr = attrs.OnDuration;
+  const offDurStr = attrs.OffDuration;
+  const onPowStr = attrs.OnPower;
+  const offPowStr = attrs.OffPower;
+
+  const repeat = repStr != null ? Number(repStr) : NaN;
+  const onDur = onDurStr != null ? Number(onDurStr) : NaN;
+  const offDur = offDurStr != null ? Number(offDurStr) : NaN;
+  const onPow = onPowStr != null ? Number(onPowStr) : NaN;
+  const offPow = offPowStr != null ? Number(offPowStr) : NaN;
+
+  if (
+    !Number.isFinite(repeat) ||
+    repeat <= 0 ||
+    repeat > ZWO_MAX_INTERVAL_REPEATS
+  ) {
+    errors.push({
+      start,
+      end,
+      message: `IntervalsT must have Repeat as a positive integer (max ${ZWO_MAX_INTERVAL_REPEATS}).`,
+    });
+    return;
+  }
+
+  if (
+    !validateZwoDuration(
+      onDur,
+      "IntervalsT OnDuration",
+      start,
+      end,
+      errors
+    )
+  ) {
+    return;
+  }
+  if (
+    !validateZwoDuration(
+      offDur,
+      "IntervalsT OffDuration",
+      start,
+      end,
+      errors
+    )
+  ) {
+    return;
+  }
+
+  const totalBlockSec = repeat * (onDur + offDur);
+  if (
+    !Number.isFinite(totalBlockSec) ||
+    totalBlockSec > ZWO_MAX_WORKOUT_DURATION_SEC
+  ) {
+    errors.push({
+      start,
+      end,
+      message: "IntervalsT total duration is unrealistically large.",
+    });
+    return;
+  }
+  if (!Number.isFinite(onPow) || !Number.isFinite(offPow)) {
+    errors.push({
+      start,
+      end,
+      message:
+        "IntervalsT must have numeric OnPower and OffPower (relative FTP).",
+    });
+    return;
+  }
+
+  const reps = Math.round(repeat);
+  for (let i = 0; i < reps; i++) {
+    segments.push({
+      durationSec: onDur,
+      pStartRel: onPow,
+      pEndRel: onPow,
+    });
+    segments.push({
+      durationSec: offDur,
+      pStartRel: offPow,
+      pEndRel: offPow,
+    });
+  }
+}
+
 // ---------------- Canonical segments -> ZWO body ----------------
 
 /**
@@ -96,7 +434,7 @@ async function fetchTrainerDayWorkoutBySlug(slug) {
  * @param {Array<[number, number, number]>} segments
  * @returns {string} ZWO <workout> body lines joined by "\n"
  */
-function segmentsToZwoSnippet(segments) {
+export function segmentsToZwoSnippet(segments) {
   if (!Array.isArray(segments) || !segments.length) return "";
 
   const blocks = [];
@@ -281,7 +619,6 @@ export function canonicalWorkoutToZwoXml(meta, options = {}) {
     (workoutTitle || "Custom workout").trim() || "Custom workout";
   const author = (source || "External workout").trim() || "External workout";
 
-  // rawSegments are already canonical: [minutes, startPower, endPower]
   const workoutSnippet = segmentsToZwoSnippet(rawSegments);
 
   // Include URL in description so it's visible in Zwift UI
@@ -560,15 +897,15 @@ export async function parseTrainerDayPage() {
   }
 }
 
-// ---------- WhatsOnZwift ----------
+// ---------- WhatsOnZwift (DOM helpers) ----------
 
-function extractWozTitle() {
-  const el = document.querySelector("header.my-8 h1");
+function extractWozTitleFromDoc(doc) {
+  const el = doc.querySelector("header.my-8 h1");
   return el ? el.textContent.trim() : "WhatsOnZwift Workout";
 }
 
-function extractWozDescription() {
-  const ul = document.querySelector("ul.items-baseline");
+function extractWozDescriptionFromDoc(doc) {
+  const ul = doc.querySelector("ul.items-baseline");
   if (!ul) return "";
   let el = ul.previousElementSibling;
   while (el) {
@@ -582,10 +919,12 @@ function extractWozDescription() {
 
 /**
  * Returns an array of { minutes, startPct, endPct, cadence|null }
- * extracted from the current WhatsOnZwift workout DOM.
+ * extracted from a WhatsOnZwift workout DOM document.
+ *
+ * @param {Document} doc
  */
-function extractWozSegmentsFromDom() {
-  const container = document.querySelector("div.order-2");
+function extractWozSegmentsFromDoc(doc) {
+  const container = doc.querySelector("div.order-2");
   if (!container) {
     console.warn("[zwo] WhatsOnZwift: order-2 container not found.");
     return [];
@@ -697,6 +1036,19 @@ function extractWozSegmentsFromDom() {
   return segments;
 }
 
+// Convenience wrappers that use the current page DOM
+function extractWozTitle() {
+  return extractWozTitleFromDoc(document);
+}
+
+function extractWozDescription() {
+  return extractWozDescriptionFromDoc(document);
+}
+
+function extractWozSegmentsFromDom() {
+  return extractWozSegmentsFromDoc(document);
+}
+
 /**
  * Map WhatsOnZwift DOM segments into canonical [minutes, startPower, endPower].
  *
@@ -774,3 +1126,203 @@ export async function parseWhatsOnZwiftPage() {
   }
 }
 
+// ---------- URL-based import for TrainerDay / WhatsOnZwift ----------
+
+/**
+ * Import a workout from a URL (TrainerDay or WhatsOnZwift).
+ *
+ * @param {string} inputUrl
+ * @returns {Promise<{
+ *   canonical: CanonicalWorkout|null,
+ *   zwoSnippet: string|null,
+ *   error: {type:string,message:string}|null
+ * }>}
+ */
+export async function importWorkoutFromUrl(inputUrl) {
+  let url;
+  try {
+    url = new URL(inputUrl);
+  } catch {
+    return {
+      canonical: null,
+      zwoSnippet: null,
+      error: {
+        type: "invalidUrl",
+        message: "That doesn’t look like a valid URL.",
+      },
+    };
+  }
+
+  const host = url.host.toLowerCase();
+
+  if (host.includes("trainerday.com")) {
+    return importTrainerDayFromUrl(url);
+  }
+
+  if (host.includes("whatsonzwift.com")) {
+    return importWhatsOnZwiftFromUrl(url);
+  }
+
+  return {
+    canonical: null,
+    zwoSnippet: null,
+    error: {
+      type: "unsupportedHost",
+      message:
+        "This URL is not from a supported workout site (TrainerDay or WhatsOnZwift).",
+    },
+  };
+}
+
+async function importTrainerDayFromUrl(url) {
+  try {
+    const match = url.pathname.match(TRAINERDAY_WORKOUT_REGEX);
+    if (!match) {
+      return {
+        canonical: null,
+        zwoSnippet: null,
+        error: {
+          type: "invalidTrainerDayPath",
+          message: "This TrainerDay URL does not look like a workout page.",
+        },
+      };
+    }
+
+    const slug = match[1];
+    const details = await fetchTrainerDayWorkoutBySlug(slug);
+
+    const rawSegments = canonicalizeTrainerDaySegments(
+      Array.isArray(details.segments) ? details.segments : []
+    );
+
+    if (!rawSegments.length) {
+      return {
+        canonical: null,
+        zwoSnippet: null,
+        error: {
+          type: "noSegments",
+          message: "TrainerDay workout has no segments to import.",
+        },
+      };
+    }
+
+    /** @type {CanonicalWorkout} */
+    const canonical = {
+      source: "TrainerDay",
+      sourceURL: url.toString(),
+      workoutTitle: details.title || "TrainerDay Workout",
+      rawSegments,
+      description: details.description || "",
+    };
+
+    const zwoSnippet = segmentsToZwoSnippet(rawSegments);
+    if (!zwoSnippet) {
+      return {
+        canonical,
+        zwoSnippet: null,
+        error: {
+          type: "emptySnippet",
+          message:
+            "TrainerDay workout could not be converted to ZWO elements.",
+        },
+      };
+    }
+
+    return {canonical, zwoSnippet, error: null};
+  } catch (err) {
+    console.error("[zwo] TrainerDay import error:", err);
+    return {
+      canonical: null,
+      zwoSnippet: null,
+      error: {
+        type: "exception",
+        message: "Import from TrainerDay failed. See console for details.",
+      },
+    };
+  }
+}
+
+async function importWhatsOnZwiftFromUrl(url) {
+  try {
+    const res = await fetch(url.toString(), {credentials: "omit"});
+    if (!res.ok) {
+      return {
+        canonical: null,
+        zwoSnippet: null,
+        error: {
+          type: "network",
+          message: `WhatsOnZwift request failed (HTTP ${res.status}).`,
+        },
+      };
+    }
+
+    const html = await res.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+
+    const wozSegments = extractWozSegmentsFromDoc(doc);
+    if (!wozSegments || !wozSegments.length) {
+      console.warn("[zwo][WhatsOnZwift] No segments extracted from DOM.");
+      return {
+        canonical: null,
+        zwoSnippet: null,
+        error: {
+          type: "noSegments",
+          message:
+            "Could not find any intervals on this WhatsOnZwift workout page.",
+        },
+      };
+    }
+
+    const rawSegments = canonicalizeWozSegments(wozSegments);
+    if (!rawSegments.length) {
+      return {
+        canonical: null,
+        zwoSnippet: null,
+        error: {
+          type: "noSegments",
+          message:
+            "WhatsOnZwift workout intervals could not be canonicalized.",
+        },
+      };
+    }
+
+    const workoutTitle = extractWozTitleFromDoc(doc);
+    const description = extractWozDescriptionFromDoc(doc);
+
+    /** @type {CanonicalWorkout} */
+    const canonical = {
+      source: "WhatsOnZwift",
+      sourceURL: url.toString(),
+      workoutTitle,
+      rawSegments,
+      description: description || "",
+    };
+
+    const zwoSnippet = segmentsToZwoSnippet(rawSegments);
+    if (!zwoSnippet) {
+      return {
+        canonical,
+        zwoSnippet: null,
+        error: {
+          type: "emptySnippet",
+          message:
+            "WhatsOnZwift workout could not be converted to ZWO elements.",
+        },
+      };
+    }
+
+    return {canonical, zwoSnippet, error: null};
+  } catch (err) {
+    console.error("[zwo] WhatsOnZwift import error:", err);
+    return {
+      canonical: null,
+      zwoSnippet: null,
+      error: {
+        type: "exception",
+        message:
+          "Import from WhatsOnZwift failed. See console for details.",
+      },
+    };
+  }
+}
