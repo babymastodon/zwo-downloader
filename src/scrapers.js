@@ -20,33 +20,57 @@ const WHATSONZWIFT_WORKOUT_REGEX = /^\/workouts\/.+/;
  * fetchJson with basic CORS / extension-host-permission detection.
  *
  * In a Chrome extension options page, blocked cross-origin requests often show
- * up as TypeError while the browser is online. We wrap those as a custom
- * VeloDriveCorsError so callers can present better remediation instructions.
+ * up as TypeError while the browser is online. We mark these as corsError
+ * so callers can present better remediation instructions.
  */
 async function fetchJson(url, options = {}) {
   try {
     const res = await fetch(url, options);
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} for ${url}`);
-    }
-    return res.json();
-  } catch (err) {
-    const isOnline =
-      typeof navigator !== "undefined" &&
-        navigator != null &&
-        typeof navigator.onLine === "boolean"
-        ? navigator.onLine
-        : true;
 
-    if (err instanceof TypeError && isOnline) {
+    // --- HTTP errors ---
+    if (!res.ok) {
+      const err = new Error(`HTTP ${res.status}`);
+      err.status = res.status;
+      err.url = url;
+      throw err;
+    }
+
+    // --- Parse JSON ---
+    try {
+      return await res.json();
+    } catch (jsonErr) {
+      const err = new Error("Invalid JSON");
+      err.url = url;
+      err.cause = jsonErr;
+      throw err;
+    }
+
+  } catch (err) {
+    // Determine whether we were online (Chrome extension CORS check)
+    const online =
+      typeof navigator === "undefined"
+        ? true
+        : navigator.onLine;
+
+    // --- CORS / site-access blocking (Chrome extension) ---
+    if (err instanceof TypeError && online) {
       const corsErr = new Error(
         "Request was blocked by the browser (CORS / site access)."
       );
-      corsErr.name = "VeloDriveCorsError";
-      corsErr.isVeloDriveCorsError = true;
+      corsErr.isCorsError = true;
+      corsErr.url = url;
       throw corsErr;
     }
 
+    // --- Offline or DNS failure ---
+    if (err instanceof TypeError && !online) {
+      const netErr = new Error("Network request failed (offline).");
+      netErr.isNetworkError = true;
+      netErr.url = url;
+      throw netErr;
+    }
+
+    // --- Fallthrough: already-structured error (HTTP or JSON) ---
     throw err;
   }
 }
@@ -60,6 +84,7 @@ async function fetchTrainerRoadJson(url, options = {}) {
     ...options,
   });
 }
+
 
 async function fetchTrainerDayWorkoutBySlug(slug) {
   const url = `https://app.api.trainerday.com/api/workouts/bySlug/${encodeURIComponent(
@@ -79,74 +104,127 @@ async function fetchTrainerDayWorkoutBySlug(slug) {
 /**
  * Convert TrainerRoad chart "course data" into canonical [minutes, startPower, endPower].
  *
- * @param {any} courseData
- * @returns {Array<[number, number, number]>}
+ * Input `seconds` is actually milliseconds. There is one row per second.
+ *
+ * Output:
+ *  - First return value: Array of [minutes, ftpPercentBegin, ftpPercentEnd]
+ *  - Second return value: user-friendly error string or null if successful
+ *
+ * The function:
+ *  - Validates and sorts the input by `seconds`
+ *  - Ensures samples are 1 second (1000 ms) apart
+ *  - Collapses 1-second samples into multi-second segments
+ *    where the power changes linearly with a *constant* per-second delta
+ *    (i.e. flat, steady slope up, or steady slope down).
+ *
+ * @param {Array<{seconds: number, ftpPercent: number}>} courseData
+ * @returns {[Array<[number, number, number]>, (string|null)]}
  */
 function canonicalizeTrainerRoadSegments(courseData) {
-  if (!Array.isArray(courseData)) return [];
-  const out = [];
+  const errorPrefix = "Invalid courseData: ";
 
-  for (const seg of courseData) {
-    // Case 1: already numeric array
-    if (Array.isArray(seg)) {
-      if (seg.length >= 2) {
-        let minutes = Number(seg[0]);
-        let start = Number(seg[1]);
-        let end =
-          seg.length > 2 && seg[2] != null ? Number(seg[2]) : start;
-
-        // Heuristic: if first value looks like seconds (very large),
-        // treat it as seconds and convert to minutes.
-        if (Number.isFinite(minutes) && minutes > 90 * 60) {
-          minutes = minutes / 60;
-        }
-
-        if (
-          Number.isFinite(minutes) &&
-          minutes > 0 &&
-          Number.isFinite(start) &&
-          Number.isFinite(end)
-        ) {
-          out.push([minutes, start, end]);
-        }
-      }
-      continue;
-    }
-
-    if (!seg || typeof seg !== "object") continue;
-
-    // Case 2: object — try to find duration/time
-    let minutes = null;
-
-    if ("Minutes" in seg) minutes = Number(seg.Minutes);
-    else if ("minutes" in seg) minutes = Number(seg.minutes);
-    else if ("Duration" in seg) minutes = Number(seg.Duration) / 60;
-    else if ("duration" in seg) minutes = Number(seg.duration) / 60;
-    else if ("Seconds" in seg) minutes = Number(seg.Seconds) / 60;
-    else if ("seconds" in seg) minutes = Number(seg.seconds) / 60;
-
-    // Case 3: power is often a single value (steady)
-    let powerVal =
-      seg.power ??
-      seg.Power ??
-      seg.percentFTP ??
-      seg.PercentFTP ??
-      seg.work ??
-      seg.Work;
-
-    if (!Number.isFinite(minutes) || minutes <= 0 || powerVal == null) {
-      continue;
-    }
-
-    powerVal = Number(powerVal);
-    if (!Number.isFinite(powerVal)) continue;
-
-    const startPower = powerVal;
-    const endPower = powerVal;
-    out.push([minutes, startPower, endPower]);
+  // Basic shape check
+  if (!Array.isArray(courseData)) {
+    return [[], errorPrefix + "must be an array"];
+  }
+  if (courseData.length === 0) {
+    return [[], errorPrefix + "array is empty"];
   }
 
-  return out;
+  // Defensive copy & sort by time, in case it's not sorted
+  const data = courseData.slice().sort((a, b) => a.seconds - b.seconds);
+
+  // Validate rows and timing (1 Hz, seconds actually milliseconds)
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+
+    if (
+      !row ||
+      typeof row.seconds !== "number" ||
+      typeof row.ftpPercent !== "number" ||
+      !Number.isFinite(row.seconds) ||
+      !Number.isFinite(row.ftpPercent)
+    ) {
+      return [[], errorPrefix + `row ${i} must have numeric 'seconds' and 'ftpPercent'`];
+    }
+
+    if (i > 0) {
+      const prev = data[i - 1];
+      const dtMs = row.seconds - prev.seconds;
+
+      if (dtMs <= 0) {
+        return [[], errorPrefix + `'seconds' must be strictly increasing (problem at index ${i})`];
+      }
+
+      // Expect 1 second spacing -> 1000 ms.
+      // Allow tiny numerical jitter, but be pretty strict.
+      const expectedMs = 1000;
+      if (Math.abs(dtMs - expectedMs) > 1e-3) {
+        return [
+          [],
+          errorPrefix +
+          `expected 1-second (1000 ms) spacing but found ${dtMs} ms between index ${i - 1} and ${i}`,
+        ];
+      }
+    }
+  }
+
+  const segments = [];
+  const EPS = 1e-9;
+  const almostEqual = (a, b) => Math.abs(a - b) <= EPS;
+
+  const n = data.length;
+
+  // Single-point workout: treat as a 1-second flat segment
+  if (n === 1) {
+    const seconds = 1;
+    const minutes = seconds / 60;
+    const p = data[0].ftpPercent;
+    segments.push([minutes, p, p]);
+    return [segments, null];
+  }
+
+  let segmentStartIndex = 0;
+  let prevDiff = null;
+
+  // Walk through and group by constant per-second delta of ftpPercent
+  for (let i = 1; i < n; i++) {
+    const currDiff = data[i].ftpPercent - data[i - 1].ftpPercent;
+
+    if (prevDiff === null) {
+      // First delta
+      prevDiff = currDiff;
+      continue;
+    }
+
+    // If the delta changes, we close the previous segment at i - 1
+    if (!almostEqual(currDiff, prevDiff)) {
+      const endIndex = i - 1;
+      const seconds = endIndex - segmentStartIndex + 1; // one row per second
+      const minutes = seconds / 60;
+      const startPower = data[segmentStartIndex].ftpPercent;
+      const endPower = data[endIndex].ftpPercent;
+
+      segments.push([minutes, startPower, endPower]);
+
+      // New segment starts at the current row i
+      segmentStartIndex = i;
+      prevDiff = currDiff;
+    }
+  }
+
+  // Flush the final segment
+  {
+    const endIndex = n - 1;
+    const seconds = endIndex - segmentStartIndex + 1;
+    const minutes = seconds / 60;
+    const startPower = data[segmentStartIndex].ftpPercent;
+    const endPower = data[endIndex].ftpPercent;
+
+    segments.push([minutes, startPower, endPower]);
+  }
+
+  return [segments, null];
 }
 
 /**
@@ -156,12 +234,29 @@ function canonicalizeTrainerRoadSegments(courseData) {
  */
 export async function parseTrainerRoadPage() {
   try {
-    const path = window.location.pathname;
-    const match = path.match(TRAINERROAD_WORKOUT_REGEX);
-    if (!match) {
+    if (typeof window === "undefined") {
       return [
         null,
-        "This doesn’t look like a TrainerRoad workout page. Open a workout in TrainerRoad and try again.",
+        "VeloDrive can only run on a TrainerRoad workout page in your browser.",
+      ];
+    }
+
+    const path = window.location.pathname || "";
+    let match;
+
+    try {
+      match = path.match(TRAINERROAD_WORKOUT_REGEX);
+    } catch {
+      return [
+        null,
+        "VeloDrive couldn’t identify this TrainerRoad workout. Try reloading the page.",
+      ];
+    }
+
+    if (!match || !match[1]) {
+      return [
+        null,
+        "This doesn’t look like a TrainerRoad workout page. Open a workout and try again.",
       ];
     }
 
@@ -171,33 +266,66 @@ export async function parseTrainerRoadPage() {
     const chartUrl = `${baseUrl}/app/api/workouts/${workoutId}/chart-data`;
     const summaryUrl = `${baseUrl}/app/api/workouts/${workoutId}/summary?withDifficultyRating=true`;
 
-    const chartData = await fetchTrainerRoadJson(chartUrl);
-    const metaResp = await fetchTrainerRoadJson(summaryUrl);
-    const summary = metaResp.summary || metaResp || {};
+    let chartData, metaResp;
 
-    // Course data -> canonical segments
-    let courseData =
-      chartData.CourseData || chartData.courseData || chartData;
-    if (!Array.isArray(courseData) && chartData.courseData) {
-      courseData = chartData.courseData;
-    }
-    if (!Array.isArray(courseData) && chartData.data) {
-      courseData = chartData.data;
-    }
+    // ---- Load data ----------------------------------------------------------
+    try {
+      [chartData, metaResp] = await Promise.all([
+        fetchTrainerRoadJson(chartUrl),
+        fetchTrainerRoadJson(summaryUrl),
+      ]);
+    } catch (err) {
+      console.warn("[VeloDrive][TrainerRoad] fetch error:", err);
 
-    const rawSegments = canonicalizeTrainerRoadSegments(courseData);
-    if (!rawSegments.length) {
+      if (err.isCorsError) {
+        return [
+          null,
+          "TrainerRoad blocked this request. In Chrome, allow VeloDrive access to trainerroad.com in Extensions → Site Access.",
+        ];
+      }
+
+      if (err.isNetworkError) {
+        return [
+          null,
+          "You appear to be offline. Check your connection and reload the workout page.",
+        ];
+      }
+
       return [
         null,
-        "This TrainerRoad workout doesn’t have any intervals that VeloDrive can read yet.",
+        "VeloDrive couldn’t load this TrainerRoad workout. Try reloading the page.",
       ];
     }
 
+    // ---- Validate -----------------------------------------------------------
+    const courseData = chartData?.courseData;
+    if (!Array.isArray(courseData) || courseData.length === 0) {
+      return [
+        null,
+        "This TrainerRoad workout doesn’t contain interval data VeloDrive can read.",
+      ];
+    }
+
+    // ---- Canonicalize -------------------------------------------------------
+    const [rawSegments, err] = canonicalizeTrainerRoadSegments(courseData);
+    if (err || rawSegments.length === 0) {
+      return [
+        null,
+        "This TrainerRoad workout doesn’t have intervals VeloDrive can read.",
+      ];
+    }
+
+    const summary = metaResp?.summary || metaResp || {};
+
     const workoutTitle =
-      summary.workoutName || document.title || "TrainerRoad Workout";
+      summary.workoutName ||
+      document.title ||
+      "TrainerRoad Workout";
 
     const description =
-      summary.workoutDescription || summary.goalDescription || "";
+      summary.workoutDescription ||
+      summary.goalDescription ||
+      "";
 
     /** @type {CanonicalWorkout} */
     const cw = {
@@ -210,11 +338,12 @@ export async function parseTrainerRoadPage() {
     };
 
     return [cw, null];
+
   } catch (err) {
-    console.warn("[VeloDrive][TrainerRoad] parse error:", err);
+    console.warn("[VeloDrive][TrainerRoad] unexpected parse error:", err);
     return [
       null,
-      "VeloDrive couldn’t read this TrainerRoad workout. Make sure you’re logged in and try reloading the page.",
+      "VeloDrive couldn’t read this TrainerRoad workout. Try reloading the page.",
     ];
   }
 }
@@ -626,7 +755,7 @@ async function importTrainerDayFromUrl(url) {
   } catch (err) {
     console.error("[zwo] TrainerDay import error:", err);
 
-    if (err && (err.name === "VeloDriveCorsError" || err.isVeloDriveCorsError)) {
+    if (err && (err.isCorsError)) {
       return {
         canonical: null,
         error: {
