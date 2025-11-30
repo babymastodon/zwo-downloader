@@ -817,7 +817,7 @@ function createWorkoutPicker(config) {
       if (!dirHandle) {
         alert(
           "No workout library folder configured.\n\n" +
-          "Open Settings and choose a VeloDrive folder first.",
+          "Open Settings and choose a VeloDrive folder first."
         );
         return;
       }
@@ -826,7 +826,7 @@ function createWorkoutPicker(config) {
       if (!hasPerm) {
         alert(
           "VeloDrive does not have permission to write to your workout library folder.\n\n" +
-          "Please re-authorize the folder in Settings.",
+          "Please re-authorize the folder in Settings."
         );
         return;
       }
@@ -836,30 +836,27 @@ function createWorkoutPicker(config) {
       );
       const fileName = baseName + ".zwo";
 
+      // Detect overwrite case
       let overwriting = false;
       try {
         await dirHandle.getFileHandle(fileName, {create: false});
         overwriting = true;
       } catch {
-        // file doesn't exist
+        // File does not exist → first save → no overwrite
       }
-
-      const confirmMsg = overwriting
-        ? `A workout named "${fileName}" already exists in your workout folder.\n\n` +
-        "If you continue, the existing file will be moved to the trash folder and a new version will be saved."
-        : `Save this workout as "${fileName}" in your workout folder?`;
-
-      const confirmed = window.confirm(confirmMsg);
-      if (!confirmed) return;
 
       if (overwriting) {
         const moved = await moveWorkoutFileToTrash(fileName);
         if (!moved) {
+          alert(
+            `Failed to move existing workout "${fileName}" to trash.\n\n` +
+            "The workout was NOT saved."
+          );
           return;
         }
       }
 
-      // Let workout-metrics decide Zwift category from canonical rawSegments
+      // Infer category from segments
       const inferredCategory =
         inferCategoryFromSegments(canonical.rawSegments) || "Imported";
 
@@ -868,11 +865,22 @@ function createWorkoutPicker(config) {
         sportType: "bike",
       });
 
-      const fileHandle = await dirHandle.getFileHandle(fileName, {create: true});
-      const writable = await fileHandle.createWritable();
-      await writable.write(zwoXml);
-      await writable.close();
+      // Write the new file
+      try {
+        const fileHandle = await dirHandle.getFileHandle(fileName, {create: true});
+        const writable = await fileHandle.createWritable();
+        await writable.write(zwoXml);
+        await writable.close();
+      } catch (err) {
+        console.error("[WorkoutPicker] Writing new file failed:", err);
+        alert(
+          `Saving workout "${fileName}" failed while writing the file.\n\n` +
+          "See logs for details."
+        );
+        return;
+      }
 
+      // Success → clean up
       workoutBuilder.clearState();
       exitBuilderMode();
 
@@ -880,10 +888,12 @@ function createWorkoutPicker(config) {
       resetPickerFilters();
       pickerExpandedKey = fileName;
       renderWorkoutPickerTable();
+
     } catch (err) {
       console.error("[WorkoutPicker] Save to ZWO dir failed:", err);
       alert(
-        "Saving workout to your library folder failed. See logs for details.",
+        "Unexpected failure while saving workout.\n\n" +
+        "See logs for details."
       );
     }
   }
