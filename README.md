@@ -59,7 +59,7 @@ To install:
 
 2. Chrome → `chrome://extensions`
 3. Enable **Developer mode**
-4. Choose **Load unpacked…** and select the project folder
+4. Choose **Load unpacked…** and select the `docs` folder
 
 ## Features
 
