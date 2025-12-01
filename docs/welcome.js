@@ -49,7 +49,7 @@ const SLIDES = [
   {
     id: "get-started",
     kind: "get-started", // icon row, no video, detail on hover
-    title: "Get started in three simple steps",
+    title: "Get started in three steps",
     bodyLines: [], // no default text; details appear on hover
     videoLight: null,
     videoDark: null,
