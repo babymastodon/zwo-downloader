@@ -27,8 +27,13 @@ Open:
 
 **https://velodrive.bike/**
 
-Most browsers will offer an **Install** / **Add to Home Screen** option.  
-The app then runs like a normal desktop or mobile app and works without internet.
+In **Google Chrome**, you’ll see an **Install** icon in the address bar.
+Click it to install VeloDrive as an app. It will appear in your system’s app launcher and can run offline once installed.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/install_dark.png">
+  <img alt="PWA Install Instructions" src="docs/screenshots/install_light.png">
+</picture>
 
 ### Chrome extension (optional)
 
