@@ -514,22 +514,20 @@
             </div>
 
             <div id="settingsEnvHelp" class="settings-help-content" hidden>
-              Web Bluetooth is what allows VeloDrive to connect directly to your trainer and heart-rate monitor from the
-              browser.
-              Some browsers or configurations don’t support it yet, which is why we recommend recent Chromium-based
-              browsers and,
-              if needed, enabling the Bluetooth flags in <code>chrome://flags</code>.
+              Web Bluetooth lets VeloDrive connect directly to your trainer and heart-rate monitor from the browser.
+              It is supported only in Google Chrome on Linux, Windows, macOS, and Android.
+              iOS browsers, Firefox, and some Chromium-based browsers (for example Vivaldi) do not support Web
+              Bluetooth.
               <br /><br />
-              In Chrome desktop, open a new tab and navigate to:
+              If Chrome doesn't detect your devices, you may need to enable its Web Bluetooth flags:
+              <br /><br />
+              In Chrome on desktop, open a new tab and go to:
               <ul style="margin:2px 0 0 16px; padding-left:0;">
                 <li><code>chrome://flags/#enable-web-bluetooth</code></li>
                 <li><code>chrome://flags/#enable-web-bluetooth-new-permissions-backend</code></li>
               </ul>
-              Set them to <strong>Enabled</strong>, restart the browser, and then reload VeloDrive.
-              <br /><br />
-              Web Bluetooth is only guaranteed to work in Google Chrome on Linux, Windows, macOS, and Android.
-              Some Chromium-based browsers (for example Vivaldi) do not support Bluetooth at all, and
-              iOS browsers currently do not support Web Bluetooth.
+              <br />
+              Set both to <strong>Enabled</strong>, restart Chrome, then reload VeloDrive.
             </div>
           </section>
 

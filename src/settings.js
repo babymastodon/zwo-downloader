@@ -340,7 +340,7 @@ function updateAttentionBanner() {
   const issues = [];
 
   if (startupNeedsAttention.missingRootDir) {
-    issues.push("Choose a VeloDrive folder for workouts, history, and trash.");
+    issues.push("Choose a VeloDrive folder for your workouts and history.");
   }
   if (startupNeedsAttention.missingBtSupport) {
     issues.push("Use a supported browser with Web Bluetooth (Chrome on desktop/Android).");
