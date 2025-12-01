@@ -941,7 +941,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // --------------------------- PWA Installation ---------------------------
 
-if ("serviceWorker" in navigator) {
+const isExtensionPage = window.location.protocol === "chrome-extension:";
+if (!isExtensionPage && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("./service-worker.js")
@@ -950,4 +951,3 @@ if ("serviceWorker" in navigator) {
       });
   });
 }
-
