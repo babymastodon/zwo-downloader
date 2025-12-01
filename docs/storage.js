@@ -25,6 +25,7 @@ export const STORAGE_PICKER_STATE = "pickerState";
 export const STORAGE_WORKOUT_BUILDER_STATE = "workoutBuilderState";
 export const STORAGE_LAST_SCRAPED_WORKOUT = "lastScrapedWorkout";
 export const STORAGE_LAST_SCRAPED_FLAG = "lastScrapedWorkoutJustScraped";
+export const STORAGE_HAS_SEEN_WELCOME = "hasSeenWelcome";
 
 const FTP_KEY = "ftp";
 
@@ -239,8 +240,14 @@ export async function wasWorkoutJustScraped() {
 }
 
 export function clearJustScrapedFlag() {
-  // Call this from workout.html once you've consumed the latest scrape.
   return setSetting(STORAGE_LAST_SCRAPED_FLAG, false);
+}
+
+export async function hasSeenWelcome() {
+  return getSetting(STORAGE_HAS_SEEN_WELCOME, false);
+}
+export async function setWelcomeSeen() {
+  return setSetting(STORAGE_HAS_SEEN_WELCOME, true);
 }
 
 

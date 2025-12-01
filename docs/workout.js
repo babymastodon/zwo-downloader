@@ -10,6 +10,8 @@
 import {BleManager} from "./ble-manager.js";
 import {getWorkoutEngine} from "./workout-engine.js";
 import {getWorkoutPicker} from "./workout-picker.js";
+import {initWelcomeTour} from "./welcome.js";
+
 
 import {
   getCssVar,
@@ -24,6 +26,8 @@ import {
   loadLastScrapedWorkout,
   wasWorkoutJustScraped,
   clearJustScrapedFlag,
+  hasSeenWelcome,
+  setWelcomeSeen,
 } from "./storage.js";
 
 // --------------------------- DOM refs ---------------------------
@@ -743,6 +747,17 @@ async function handleLastScrapedWorkout() {
   }
 }
 
+async function maybeShowWelcome() {
+  if (await hasSeenWelcome()) return;
+
+  const tour = initWelcomeTour({
+    onFinished: () => setWelcomeSeen()
+  });
+
+  tour.open(0);
+}
+
+
 // --------------------------- Init ---------------------------
 
 async function initPage() {
@@ -760,6 +775,7 @@ async function initPage() {
   updateHrBatteryLabel();
 
   await initSettings();
+  maybeShowWelcome();
 
   if (window.matchMedia) {
     const mql = window.matchMedia("(prefers-color-scheme: dark)");

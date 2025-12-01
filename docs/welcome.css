@@ -1,0 +1,401 @@
+/* welcome.css
+ * Fullscreen welcome / tour overlay for VeloDrive.
+ */
+
+.welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+.welcome-overlay--visible {
+  animation: welcome-overlay-fade-in 180ms ease-out;
+}
+
+@keyframes welcome-overlay-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.welcome-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+@media (max-width: 720px) {
+  .welcome-shell {
+    padding: 16px;
+  }
+}
+
+/* Close button */
+
+.welcome-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.welcome-close-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-main);
+}
+
+@media (prefers-color-scheme: dark) {
+  .welcome-close-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* Slide wrapper (animated) */
+
+.welcome-slide {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  transition: transform 220ms ease, opacity 220ms ease;
+}
+
+.welcome-slide--animating {
+  will-change: transform, opacity;
+}
+
+/* Header */
+
+.welcome-header {
+  text-align: center;
+}
+
+.welcome-title {
+  font-size: 34px;
+  /* 2x-ish */
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-main);
+  text-align: center;
+}
+
+/* Main: arrows + media */
+
+.welcome-main {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Carets at side edge, large clickable area
+   Use fixed positioning so they hug the viewport edges. */
+
+.welcome-nav {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 61;
+  /* above slide content, still under overlay root */
+}
+
+.welcome-nav-prev {
+  left: 20px;
+}
+
+.welcome-nav-next {
+  right: 20px;
+}
+
+.welcome-nav span {
+  display: inline-block;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.welcome-nav:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-main);
+}
+
+.welcome-nav:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (prefers-color-scheme: dark) {
+  .welcome-nav:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* Media wrapper: square, capped at 60% of viewport width/height */
+
+.welcome-video-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 60vw;
+  max-height: 60vh;
+  margin: 0 auto;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: none;
+  /* no visible border */
+  background: var(--surface-elevated);
+  aspect-ratio: 1 / 1;
+  /* square */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.welcome-video {
+  width: 100%;
+  height: 100%;
+  display: none;
+  object-fit: contain;
+}
+
+/* Large logo for splash */
+
+.welcome-logo {
+  display: none;
+  max-width: min(40vh, 40vw);
+  max-height: min(40vh, 40vw);
+  opacity: 0;
+}
+
+/* Splash animation (boot-style) */
+
+.welcome-slide--splash .welcome-logo {
+  opacity: 0;
+  animation: welcome-logo-boot 480ms ease-out forwards;
+  animation-delay: 80ms;
+}
+
+@keyframes welcome-logo-boot {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.welcome-slide--splash .welcome-title,
+.welcome-slide--splash .welcome-body {
+  opacity: 0;
+  animation: welcome-text-boot 420ms ease-out forwards;
+  animation-delay: 520ms;
+}
+
+@keyframes welcome-text-boot {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Body text */
+
+.welcome-body {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-main);
+  line-height: 1.6;
+  text-align: center;
+}
+
+.welcome-body-line {
+  display: inline-block;
+}
+
+/* Icon-only slides (splash + get-started) */
+
+.welcome-slide--icon-only .welcome-main {
+  max-width: 60vw;
+}
+
+/* Get started icon row */
+
+.welcome-icon-row {
+  display: none;
+  width: 100%;
+  max-width: 60vw;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.welcome-icon-card {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.welcome-icon-card:focus {
+  outline: none;
+}
+
+.welcome-icon-card:focus-visible .welcome-icon-circle {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.welcome-icon-circle {
+  width: 110px;
+  height: 110px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  transition: transform 150ms ease, box-shadow 150ms ease,
+    background 150ms ease;
+}
+
+.welcome-icon-card:hover .welcome-icon-circle {
+  transform: translateY(-2px);
+  background: var(--surface-elevated);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+}
+
+.welcome-icon-circle svg {
+  width: 52px;
+  height: 52px;
+  display: block;
+  stroke: var(--text-main);
+  fill: none;
+  stroke-width: 1.6;
+}
+
+.welcome-icon-label {
+  font-size: 18px;
+  /* larger, consistent with body */
+  text-align: center;
+  color: var(--text-main);
+}
+
+/* Detail text under icons (overlay, no layout reflow) */
+
+.welcome-step-detail {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translate(-50%, 4px);
+  max-width: 700vw;
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 18px;
+  text-align: center;
+  color: var(--text-main);
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 320ms ease, transform 320ms ease;
+}
+
+.welcome-step-detail--visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* Mobile tweaks */
+
+@media (max-width: 720px) {
+  .welcome-slide {
+    max-width: 100%;
+    gap: 16px;
+  }
+
+  .welcome-title {
+    font-size: 26px;
+  }
+
+  .welcome-body {
+    font-size: 16px;
+  }
+
+  .welcome-video-wrapper {
+    max-width: 80vw;
+    max-height: 50vh;
+  }
+
+  .welcome-logo {
+    max-width: min(32vh, 32vw);
+    max-height: min(32vh, 32vw);
+  }
+
+  .welcome-icon-row {
+    max-width: 100%;
+    gap: 8px;
+  }
+
+  .welcome-icon-circle {
+    width: 86px;
+    height: 86px;
+  }
+
+  .welcome-icon-circle svg {
+    width: 40px;
+    height: 40px;
+  }
+
+  .welcome-icon-label {
+    font-size: 16px;
+  }
+
+  .welcome-step-detail {
+    font-size: 16px;
+    max-width: 90vw;
+  }
+}

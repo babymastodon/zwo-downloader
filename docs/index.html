@@ -26,6 +26,7 @@
   <link rel="stylesheet" href="workout-base.css">
   <link rel="stylesheet" href="workout-picker.css">
   <link rel="stylesheet" href="settings.css">
+  <link rel="stylesheet" href="welcome.css">
 </head>
 
 <body>
@@ -460,13 +461,9 @@
             </div>
 
             <div id="settingsFtpHelp" class="settings-help-content" hidden>
-              FTP is your sustainable power for roughly a 1-hour effort. VeloDrive uses it to:
-              <ul>
-                <li>Convert relative workout segments (%FTP) into watts.</li>
-                <li>Calculate energy (kJ) consumed per workout.</li>
-              </ul>
-              If you’re unsure, start with a rough guess (e.g. last known FTP or outdoor 20–30 minute best power × 0.95)
-              and adjust over time.
+              FTP controls the workout difficulty. If you don’t know your
+              actual FTP, you can estimate it by multiplying your weight in
+              kilograms by 3.
             </div>
 
             <div class="settings-row" id="settingsSoundToggle">
@@ -581,6 +578,82 @@
       </div>
     </div>
   </div>
+
+  <!-- Welcome / first-run tour overlay -->
+  <div id="welcomeOverlay" class="welcome-overlay" aria-modal="true" role="dialog" aria-label="Welcome intro">
+    <div class="welcome-shell">
+      <button id="welcomeCloseBtn" class="welcome-close-btn" type="button" aria-label="Skip intro">
+        ×
+      </button>
+
+      <div class="welcome-slide">
+        <header class="welcome-header">
+          <h1 id="welcomeTitle" class="welcome-title"></h1>
+        </header>
+
+        <main class="welcome-main">
+          <button id="welcomePrevBtn" class="welcome-nav welcome-nav-prev" type="button" aria-label="Previous">
+            <span>❮</span>
+          </button>
+
+          <div class="welcome-video-wrapper">
+            <video id="welcomeVideo" class="welcome-video" muted loop playsinline preload="auto"></video>
+
+            <!-- Splash logo (first slide) -->
+            <img id="welcomeLogo" class="welcome-logo" src="icons/logo_sq.svg" alt="VeloDrive logo" />
+
+            <!-- Get started icons (last slide) -->
+            <div id="welcomeIconRow" class="welcome-icon-row">
+              <!-- Select folder -->
+              <div id="welcomeStepFolder" class="welcome-icon-card" tabindex="0">
+                <div class="welcome-icon-circle">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                    <path d="M7 14h10" stroke-linecap="round" />
+                  </svg>
+                </div>
+                <div class="welcome-icon-label">Select folder</div>
+              </div>
+
+              <!-- Connect trainer -->
+              <div id="welcomeStepTrainer" class="welcome-icon-card" tabindex="0">
+                <div class="welcome-icon-circle">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="7" cy="17" r="3" />
+                    <circle cx="17" cy="7" r="3" />
+                    <path d="M9.5 14.5l4-4M6 7h4l2 2h3" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </div>
+                <div class="welcome-icon-label">Connect trainer</div>
+              </div>
+
+              <!-- Import workout -->
+              <div id="welcomeStepWorkout" class="welcome-icon-card" tabindex="0">
+                <div class="welcome-icon-circle">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 4h10l4 4v12H5z" />
+                    <path d="M12 9v7M9 13l3 3 3-3" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </div>
+                <div class="welcome-icon-label">Import a workout</div>
+              </div>
+
+            </div>
+
+            <!-- Hover detail overlay for get-started, positioned over wrapper -->
+            <p id="welcomeStepDetail" class="welcome-step-detail"></p>
+          </div>
+
+          <button id="welcomeNextBtn" class="welcome-nav welcome-nav-next" type="button" aria-label="Next">
+            <span>❯</span>
+          </button>
+        </main>
+
+        <p id="welcomeBody" class="welcome-body"></p>
+      </div>
+    </div>
+  </div>
+
 
   <!-- Status overlay (3-2-1 / paused / resumed) -->
   <div id="statusOverlay" class="status-overlay">
