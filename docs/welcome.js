@@ -296,7 +296,7 @@ export function initWelcomeTour(options = {}) {
     if (!isOpen) return;
     clearAutoClose();
     isOpen = false;
-    overlay.classList.remove("welcome-overlay--splash-only");
+    const wasSplash = currentMode === "splash";
     overlay.classList.add("welcome-overlay--hiding");
     overlay.classList.remove("welcome-overlay--visible");
 
@@ -308,14 +308,18 @@ export function initWelcomeTour(options = {}) {
       overlay.style.display = "none";
       overlay.classList.remove(
         "welcome-overlay--visible",
-        "welcome-overlay--hiding",
-        "welcome-overlay--splash-only"
+        "welcome-overlay--hiding"
       );
+      if (!wasSplash) {
+        overlay.classList.remove("welcome-overlay--splash-only");
+      }
       notifyVisibility(false);
       if (typeof onFinished === "function") {
         onFinished();
       }
     };
+
+    // Keep splash-only visuals until fully hidden to avoid caret flashing in splash mode.
 
     overlay.addEventListener("transitionend", finalize);
     window.setTimeout(finalize, 260); // fallback if transitionend doesn’t fire
