@@ -1131,8 +1131,7 @@ function createWorkoutPicker(config) {
     isPickerOpen = true;
     if (overlay) overlay.style.display = "flex";
 
-    // Only auto-focus search when not targeting a specific workout.
-    if (searchInput && !isBuilderMode && !hasTargetTitle) {
+    if (searchInput && !isBuilderMode) {
       searchInput.focus();
     }
   }
