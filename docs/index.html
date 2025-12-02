@@ -58,47 +58,55 @@
               <!-- Select folder -->
               <div id="welcomeStepFolder" class="welcome-icon-card" tabindex="0">
                 <div class="welcome-icon-circle">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                    <path d="M7 14h10" stroke-linecap="round" />
+                  <svg viewBox="0 0 64 64" aria-hidden="true">
+                    <path d="M10 18h14l6 7h24a4 4 0 0 1 4 4v22a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V22a4 4 0 0 1 4-4z"
+                      stroke-linejoin="round" />
+                    <path d="M14 32h36m-36 8h26" stroke-linecap="round" />
+                    <path d="M20 24h8" stroke-linecap="round" />
                   </svg>
                 </div>
-                <div class="welcome-icon-label">Select folder</div>
+                <div class="welcome-icon-label">Choose your folder</div>
               </div>
 
               <!-- Connect trainer -->
               <div id="welcomeStepTrainer" class="welcome-icon-card" tabindex="0">
                 <div class="welcome-icon-circle">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <circle cx="7" cy="17" r="3" />
-                    <circle cx="17" cy="7" r="3" />
-                    <path d="M9.5 14.5l4-4M6 7h4l2 2h3" stroke-linecap="round" stroke-linejoin="round" />
+                  <svg viewBox="0 0 64 64" aria-hidden="true">
+                    <circle cx="42" cy="22" r="11" />
+                    <circle cx="42" cy="22" r="4" />
+                    <path d="M24 44l9-20 8 6 7-9" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M18 48h16l8 12H30z" stroke-linejoin="round" />
+                    <path d="M38 42h7l12 14H45z" stroke-linejoin="round" />
+                    <path d="M22 32l-4-7h10l6 6" stroke-linecap="round" stroke-linejoin="round" />
                   </svg>
                 </div>
-                <div class="welcome-icon-label">Connect trainer</div>
+                <div class="welcome-icon-label">Pair your trainer</div>
               </div>
 
               <!-- Import workout -->
               <div id="welcomeStepWorkout" class="welcome-icon-card" tabindex="0">
                 <div class="welcome-icon-circle">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M5 4h10l4 4v12H5z" />
-                    <path d="M12 9v7M9 13l3 3 3-3" stroke-linecap="round" stroke-linejoin="round" />
+                  <svg viewBox="0 0 64 64" aria-hidden="true">
+                    <path d="M16 10h22l10 10v30H16z" />
+                    <path d="M38 10v12h10" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M22 38l6-7 5 6 6-8" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M32 46v-8" stroke-linecap="round" />
+                    <path d="M28 30v-6l4-4 4 4v6" stroke-linecap="round" stroke-linejoin="round" />
                   </svg>
                 </div>
-                <div class="welcome-icon-label">Import a workout</div>
+                <div class="welcome-icon-label">Load a workout</div>
               </div>
 
             </div>
-
-            <!-- Hover detail overlay for get-started, positioned over wrapper -->
-            <p id="welcomeStepDetail" class="welcome-step-detail"></p>
           </div>
 
           <button id="welcomeNextBtn" class="welcome-nav welcome-nav-next" type="button" aria-label="Next">
             <span>❯</span>
           </button>
         </main>
+
+        <!-- Hover detail overlay for get-started, spans near bottom -->
+        <p id="welcomeStepDetail" class="welcome-step-detail"></p>
 
         <p id="welcomeBody" class="welcome-body"></p>
       </div>

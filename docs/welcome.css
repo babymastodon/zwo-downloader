@@ -21,7 +21,7 @@
   background: var(--bg);
   color: var(--text-main);
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
   padding: 24px;
 }
@@ -66,11 +66,15 @@
 
 .welcome-slide {
   width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  justify-content: center;
+  gap: 12px;
   transition: transform 220ms ease, opacity 220ms ease;
+  max-width: none;
+  padding: 20px 0 52px;
 }
 
 .welcome-slide--animating {
@@ -97,9 +101,11 @@
 .welcome-main {
   position: relative;
   width: 100%;
+  flex: 0 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 6px 0 18px;
 }
 
 /* Carets at side edge, large clickable area
@@ -148,11 +154,11 @@
 }
 
 .welcome-nav-prev {
-  left: 20px;
+  left: 0;
 }
 
 .welcome-nav-next {
-  right: 20px;
+  right: 0;
 }
 
 .welcome-nav span {
@@ -260,6 +266,7 @@
   color: var(--text-main);
   line-height: 1.6;
   text-align: center;
+  max-width: 60vw;
 }
 
 .welcome-body-line {
@@ -269,7 +276,7 @@
 /* Icon-only slides (splash + get-started) */
 
 .welcome-slide--icon-only .welcome-main {
-  max-width: 60vw;
+  max-width: 82vw;
 }
 
 /* Get started icon row */
@@ -277,55 +284,77 @@
 .welcome-icon-row {
   display: none;
   width: 100%;
-  max-width: 60vw;
-  justify-content: space-between;
-  gap: 16px;
+  max-width: 980px;
+  justify-content: center;
+  gap: 20px;
+  margin: 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .welcome-icon-card {
   flex: 1;
   min-width: 0;
+  max-width: 260px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  padding: 14px 16px;
   cursor: pointer;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  transition: border-color 180ms ease, background 180ms ease;
+  text-align: center;
 }
 
 .welcome-icon-card:focus {
   outline: none;
 }
 
-.welcome-icon-card:focus-visible .welcome-icon-circle {
-  box-shadow: 0 0 0 2px var(--accent);
+.welcome-icon-card:hover {
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+}
+
+.welcome-icon-card.is-active,
+.welcome-icon-card:focus-visible {
+  background: color-mix(in srgb, var(--surface-elevated) 94%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border-subtle));
 }
 
 .welcome-icon-circle {
-  width: 110px;
-  height: 110px;
-  border-radius: 999px;
-  border: 1px solid var(--border-subtle);
+  width: 124px;
+  height: 124px;
+  border-radius: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--surface);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--surface) 92%, transparent),
+    color-mix(in srgb, var(--surface-elevated) 88%, transparent)
+  );
   transition: transform 150ms ease, box-shadow 150ms ease,
-    background 150ms ease;
+    background 150ms ease, border-color 150ms ease;
 }
 
-.welcome-icon-card:hover .welcome-icon-circle {
-  transform: translateY(-2px);
-  background: var(--surface-elevated);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+.welcome-icon-card.is-active .welcome-icon-circle,
+.welcome-icon-card:focus-visible .welcome-icon-circle {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--surface-elevated) 90%, transparent),
+    color-mix(in srgb, var(--surface-elevated) 84%, transparent)
+  );
 }
 
 .welcome-icon-circle svg {
-  width: 52px;
-  height: 52px;
+  width: 64px;
+  height: 64px;
   display: block;
   stroke: var(--text-main);
   fill: none;
-  stroke-width: 1.6;
+  stroke-width: 1.4;
 }
 
 .welcome-icon-label {
@@ -338,25 +367,7 @@
 /* Detail text under icons (overlay, no layout reflow) */
 
 .welcome-step-detail {
-  position: absolute;
-  left: 50%;
-  bottom: 12px;
-  transform: translate(-50%, 4px);
-  max-width: 700vw;
-  margin: 0;
-  padding: 8px 14px;
-  font-size: 18px;
-  text-align: center;
-  color: var(--text-main);
-  background: color-mix(in srgb, var(--bg) 94%, transparent);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 320ms ease, transform 320ms ease;
-}
-
-.welcome-step-detail--visible {
-  opacity: 1;
-  transform: translate(-50%, 0);
+  display: none;
 }
 
 .welcome-overlay--splash-only .welcome-nav,
@@ -391,7 +402,7 @@ body.welcome-active .bottom-nav {
 @media (max-width: 720px) {
   .welcome-slide {
     max-width: 100%;
-    gap: 16px;
+    gap: 14px;
   }
 
   .welcome-title {
@@ -418,13 +429,13 @@ body.welcome-active .bottom-nav {
   }
 
   .welcome-icon-circle {
-    width: 86px;
-    height: 86px;
+    width: 102px;
+    height: 102px;
   }
 
   .welcome-icon-circle svg {
-    width: 40px;
-    height: 40px;
+    width: 48px;
+    height: 48px;
   }
 
   .welcome-icon-label {
@@ -433,6 +444,7 @@ body.welcome-active .bottom-nav {
 
   .welcome-step-detail {
     font-size: 16px;
-    max-width: 90vw;
+    max-width: 96vw;
+    bottom: 22px;
   }
 }

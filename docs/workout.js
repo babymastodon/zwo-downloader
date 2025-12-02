@@ -790,6 +790,7 @@ async function maybeShowWelcome() {
 
     try {
       welcomeSeenAlready = await hasSeenWelcome();
+      welcomeSeenAlready = false;
     } catch (err) {
       logDebug("Welcome seen check failed; treating as first run: " + err);
       welcomeSeenAlready = false;
