@@ -72,8 +72,8 @@
   background: var(--surface);
   color: var(--text-main);
   min-width: 160px;
-  flex: 0 1 220px;
-  width: 220px;
+  flex: 0 1 260px;
+  width: 260px;
   height: var(--nav-control-height);
   box-sizing: border-box;
 }
@@ -371,8 +371,8 @@
 }
 
 .picker-close-btn svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   display: block;
   fill: none;
   stroke: currentColor;
@@ -729,8 +729,8 @@
 }
 
 .wb-code-icon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   display: block;
 }
 
