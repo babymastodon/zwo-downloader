@@ -19,8 +19,11 @@
   --cad-line: #2d8201;
   --time-scrub: #ffff00;
   --shade-bg: #000000;
-  --radius: 4px;
-  --nav-control-height: 30px;
+  --radius: 6px;
+  --nav-control-height: 32px;
+  --font-size-base: 16px;
+  --interactive-transition: background-color 0.18s ease, color 0.18s ease,
+    border-color 0.18s ease, box-shadow 0.18s ease, transform 0.14s ease;
 
   /* interval colors (light mode, as in options.js) */
   --zone-recovery: #c9c9c9;
@@ -89,10 +92,18 @@ body {
   color: var(--text-main);
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text",
     "Segoe UI", system-ui, sans-serif;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   display: flex;
   justify-content: center;
   align-items: stretch;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  transition: var(--interactive-transition);
 }
 
 a {
@@ -207,7 +218,7 @@ a:hover {
   pointer-events: none;
   font-size: 11px;
   padding: 4px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: #ffffff;
   color: #666666;
   border: 1px solid rgba(0, 0, 0, 0.12);
@@ -240,7 +251,7 @@ a:hover {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   color: var(--text-main);
 }
 
@@ -263,7 +274,7 @@ a:hover {
 }
 
 .workout-title-center {
-  font-size: 14px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   white-space: nowrap;
   max-width: 60vw;
@@ -295,12 +306,13 @@ a:hover {
   background: transparent;
   cursor: pointer;
   height: var(--nav-control-height);
-  font-size: 14px;
+  font-size: var(--font-size-base);
   color: var(--text-main);
+  transition: var(--interactive-transition);
 }
 
 .device-label {
-  font-size: 14px;
+  font-size: var(--font-size-base);
   color: var(--text-main);
   white-space: nowrap;
   display: flex;
@@ -309,7 +321,7 @@ a:hover {
 }
 
 .device-battery {
-  font-size: 14px;
+  font-size: var(--font-size-base);
   color: var(--text-muted);
 }
 
@@ -374,6 +386,7 @@ a:hover {
   cursor: pointer;
   padding: 0;
   color: var(--text-main);
+  transition: var(--interactive-transition);
 }
 
 .nav-icon-button svg {
@@ -424,13 +437,14 @@ a:hover {
   border: none;
   background: transparent;
   padding: 0 10px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   white-space: nowrap;
   color: inherit;
+  transition: var(--interactive-transition);
 }
 
 .mode-toggle-button+.mode-toggle-button {
@@ -496,7 +510,7 @@ a:hover {
   align-items: center;
   justify-content: center;
   font-variant-numeric: tabular-nums;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   color: inherit;
 }
 
@@ -551,7 +565,7 @@ a:hover {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   border-radius: var(--radius);
   padding: 0 8px;
   background: var(--surface);
@@ -559,6 +573,7 @@ a:hover {
   color: var(--text-main);
   background: rgba(0, 0, 0, 0.0);
   cursor: pointer;
+  transition: var(--interactive-transition);
 }
 
 .inline-clicktoggle span {
@@ -594,7 +609,7 @@ a:hover {
   padding: 8px;
   display: none;
   flex-direction: column;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   z-index: 50;
   background: rgba(255, 255, 255, 0.85);
   color: #111111;
@@ -605,12 +620,12 @@ a:hover {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 4px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }
 
 .debug-header-title {
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }
 
 .debug-close-btn {
@@ -619,8 +634,9 @@ a:hover {
   background: transparent;
   color: inherit;
   padding: 2px 6px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   cursor: pointer;
+  transition: var(--interactive-transition);
 }
 
 .debug-log {
@@ -632,7 +648,7 @@ a:hover {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
   white-space: pre-wrap;
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -685,7 +701,7 @@ a:hover {
 
 @media (max-width: 800px) {
   .bottom-nav {
-    font-size: 14px;
+    font-size: var(--font-size-base);
   }
 }
 
@@ -717,7 +733,7 @@ a:hover {
 
 .settings-ftp-unit {
   margin-left: 2px;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   color: var(--text-muted);
 }
 
