@@ -60,9 +60,9 @@ const STEP_DETAILS = {
   folder:
     "Pick a folder where VeloDrive will store workouts, ride history, and settings so everything works offline.",
   trainer:
-    "Use the Bike and HR buttons in the bottom bar to pair your FTMS trainer and heart-rate monitor. Choose ERG for target control or Resistance for a free-ride feel.",
+    "Pair your FTMS trainer and heart-rate monitor. You may need to enable Bluetooth in Google Chrome.",
   workout:
-    "Open the workout library to import .zwo files from TrainerRoad, TrainerDay, or WhatsOnZwift, or build your own session and save it to your folder.",
+    "Import workout files from TrainerRoad, TrainerDay, or WhatsOnZwift.",
 };
 const STEP_KEYS = ["folder", "trainer", "workout"];
 
