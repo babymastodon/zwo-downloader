@@ -805,7 +805,7 @@ export async function importWorkoutFromUrl(inputUrl) {
   if (host.includes("trainerroad.com")) {
     return [
       null,
-      "TrainerRoad workouts can only be imported with the VeloDrive Chrome extension. Open the workout in TrainerRoad.com and then click the VeloDrive extension icon",
+      "TrainerRoad workouts can only be imported with the VeloDrive Chrome extension.",
     ];
   }
 
