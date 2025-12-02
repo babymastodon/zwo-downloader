@@ -1,7 +1,7 @@
 // service-worker.js
 
 // Bump this when you deploy a new version so clients pick up new files
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const CACHE_NAME = `velodrive-cache-${CACHE_VERSION}`;
 
 // Files to make available offline
