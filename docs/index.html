@@ -324,6 +324,8 @@
             <span>Add workout</span>
           </button>
 
+          <div id="workoutBuilderStatus" class="builder-status" style="display:none;"></div>
+
           <button id="workoutBuilderBackBtn" class="wb-code-insert-btn picker-back-btn" type="button"
             style="display:none;">
             <svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;display:block;stroke-width:1.6;"
@@ -332,20 +334,6 @@
                 stroke-linejoin="round" />
             </svg>
             <span>Back To Library</span>
-          </button>
-          <button id="workoutBuilderClearBtn" class="wb-code-insert-btn" type="button" title="Start a new builder"
-            style="display:none;">
-            <svg viewBox="0 0 24 24" width="16" height="16" class="wb-code-icon" aria-hidden="true">
-              <!-- "New Document" icon -->
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor"
-                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M14 2v6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round" />
-              <path d="M9 13h6M9 17h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round" />
-            </svg>
-
-            <span>New</span>
           </button>
           <button id="workoutBuilderSaveBtn" class="picker-add-btn picker-save-btn" type="button" style="display:none;"
             title="Save workout to library">
@@ -371,6 +359,7 @@
 
       </header>
 
+      <div id="workoutImportRoot" class="workout-import-root" style="display:none;"></div>
       <div id="workoutBuilderRoot" class="workout-builder-root" style="display:none;"></div>
 
       <div class="workout-picker-table-wrapper">

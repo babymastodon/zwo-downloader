@@ -34,6 +34,7 @@ import {
   parseZwoXmlToCanonicalWorkout,
   canonicalWorkoutToZwoXml,
 } from "./zwo.js";
+import {importWorkoutFromUrl} from "./scrapers.js";
 
 let instance = null;
 
@@ -190,9 +191,10 @@ function createWorkoutPicker(config) {
 
   const addWorkoutBtn = modal.querySelector("#pickerAddWorkoutBtn");
   const builderBackBtn = modal.querySelector("#workoutBuilderBackBtn");
-  const builderClearBtn = modal.querySelector("#workoutBuilderClearBtn");
   const builderSaveBtn = modal.querySelector("#workoutBuilderSaveBtn");
   const builderRoot = modal.querySelector("#workoutBuilderRoot");
+  const importRoot = modal.querySelector("#workoutImportRoot");
+  const builderStatusEl = modal.querySelector("#workoutBuilderStatus");
   const emptyStateEl = modal.querySelector("#pickerEmptyState");
   const emptyAddBtn = modal.querySelector("#pickerEmptyAddBtn");
   const titleEl = modal.querySelector("#workoutPickerTitle");
@@ -204,6 +206,15 @@ function createWorkoutPicker(config) {
   let pickerSortDir = "asc";
   let isPickerOpen = false;
   let isBuilderMode = false;
+  let isImportMode = false;
+  let hasUnsavedBuilderChanges = false;
+  let builderBaseline = null; // CanonicalWorkout snapshot to compare against
+  let suppressBuilderDirty = false;
+  let importUrlInput = null;
+  let importStatusEl = null;
+  let importSubmitBtn = null;
+  let importScratchBtn = null;
+  let isImportInProgress = false;
 
   // workoutBuilder.getState() returns a CanonicalWorkout
   const workoutBuilder =
@@ -211,7 +222,12 @@ function createWorkoutPicker(config) {
     createWorkoutBuilder({
       rootEl: builderRoot,
       getCurrentFtp,
+      statusMessageEl: builderStatusEl,
+      onChange: handleBuilderChange,
+      onStatusChange: updateBuilderStatus,
     });
+
+  buildImportView();
 
   // --------------------------- helpers for derived info ---------------------------
 
@@ -632,41 +648,343 @@ function createWorkoutPicker(config) {
     });
   }
 
-  async function openWorkoutInBuilder(canonicalWorkout) {
-    if (!workoutBuilder) {
-      console.warn("[WorkoutPicker] Workout builder is not available.");
-      return;
+  function cloneCanonicalWorkout(cw) {
+    if (!cw) return null;
+    return {
+      workoutTitle: cw.workoutTitle || "",
+      source: cw.source || "",
+      sourceURL: cw.sourceURL || "",
+      description: cw.description || "",
+      rawSegments: Array.isArray(cw.rawSegments)
+        ? cw.rawSegments.map((seg) =>
+          Array.isArray(seg) ? [seg[0], seg[1], seg[2]] : seg
+        )
+        : [],
+    };
+  }
+
+  function canonicalEquals(a, b) {
+    if (!a || !b) return false;
+    if (
+      (a.workoutTitle || "") !== (b.workoutTitle || "") ||
+      (a.source || "") !== (b.source || "") ||
+      (a.sourceURL || "") !== (b.sourceURL || "") ||
+      (a.description || "") !== (b.description || "")
+    ) {
+      return false;
     }
 
-    enterBuilderMode();
+    const arrA = Array.isArray(a.rawSegments) ? a.rawSegments : [];
+    const arrB = Array.isArray(b.rawSegments) ? b.rawSegments : [];
+    if (arrA.length !== arrB.length) return false;
 
-    try {
-      workoutBuilder.loadCanonicalWorkout(canonicalWorkout);
-    } catch (err) {
-      console.error(
-        "[WorkoutPicker] Failed to load workout into builder:",
-        err
-      );
+    for (let i = 0; i < arrA.length; i += 1) {
+      const segA = arrA[i] || [];
+      const segB = arrB[i] || [];
+      if (segA.length !== segB.length) return false;
+      for (let j = 0; j < segA.length; j += 1) {
+        if (Number(segA[j]) !== Number(segB[j])) return false;
+      }
+    }
+    return true;
+  }
+
+  function setBuilderBaselineFromCurrent() {
+    if (!workoutBuilder) return;
+    builderBaseline = cloneCanonicalWorkout(workoutBuilder.getState());
+    hasUnsavedBuilderChanges = false;
+  }
+
+  function handleBuilderChange() {
+    if (!workoutBuilder || suppressBuilderDirty || !isBuilderMode) return;
+    const current = workoutBuilder.getState();
+    const isDirty =
+      !builderBaseline || !canonicalEquals(current, builderBaseline);
+    hasUnsavedBuilderChanges = isDirty;
+  }
+
+  function resetHeaderStatus() {
+    updateBuilderStatus({text: "", tone: "neutral"});
+    if (builderStatusEl) {
+      builderStatusEl.style.display = "none";
     }
   }
 
-  function enterBuilderMode() {
-    isBuilderMode = true;
-    if (builderRoot) builderRoot.style.display = "block";
-    if (titleEl) titleEl.textContent = "New Workout";
+  function updateBuilderStatus(payload) {
+    if (!builderStatusEl) return;
+    const text = payload?.text || "";
+    const tone = payload?.tone || "neutral";
+    const isActive = isBuilderMode || isImportMode;
+
+    builderStatusEl.textContent = text;
+    builderStatusEl.dataset.tone = tone;
+    builderStatusEl.classList.remove(
+      "builder-status--ok",
+      "builder-status--error",
+      "builder-status--neutral"
+    );
+    builderStatusEl.classList.add(`builder-status--${tone}`);
+    builderStatusEl.style.display = isActive ? "inline-flex" : "none";
+  }
+
+  // --------------------------- Import view ---------------------------
+
+  function buildImportView() {
+    if (!importRoot) return;
+
+    importRoot.innerHTML = "";
+
+    const card = document.createElement("div");
+    card.className = "workout-import-card";
+
+    const intro = document.createElement("div");
+    intro.className = "workout-import-intro";
+
+    const heading = document.createElement("div");
+    heading.className = "workout-import-title";
+    heading.textContent = "Add a workout from a URL";
+
+    const blurb = document.createElement("p");
+    blurb.className = "workout-import-copy";
+    blurb.textContent =
+      "Paste a WhatsOnZwift or TrainerDay workout link. We will scrape it, save it, and return you to the library.";
+
+    const linksRow = document.createElement("div");
+    linksRow.className = "workout-import-links";
+
+    const wozLink = document.createElement("a");
+    wozLink.href = "https://whatsonzwift.com/workouts";
+    wozLink.target = "_blank";
+    wozLink.rel = "noopener noreferrer";
+    wozLink.textContent = "Browse WhatsOnZwift workouts";
+
+    const tdLink = document.createElement("a");
+    tdLink.href = "https://app.trainerday.com/search";
+    tdLink.target = "_blank";
+    tdLink.rel = "noopener noreferrer";
+    tdLink.textContent = "Search TrainerDay";
+
+    const helper = document.createElement("div");
+    helper.className = "workout-import-helper";
+    helper.innerHTML =
+      "<strong>Tip:</strong> open a workout on either site, copy its URL, then paste it below.";
+
+    linksRow.appendChild(wozLink);
+    linksRow.appendChild(tdLink);
+
+    const list = document.createElement("ul");
+    list.className = "workout-import-notes";
+    const notes = [
+      "Use the search links above to find a workout you like.",
+      "Open the workout detail page and copy the full URL.",
+      "Paste it below and click Import — it saves straight into your library.",
+    ];
+    notes.forEach((text) => {
+      const li = document.createElement("li");
+      li.textContent = text;
+      list.appendChild(li);
+    });
+
+    intro.appendChild(heading);
+    intro.appendChild(blurb);
+    intro.appendChild(linksRow);
+    intro.appendChild(helper);
+    intro.appendChild(list);
+
+    const form = document.createElement("div");
+    form.className = "workout-import-form";
+
+    importUrlInput = document.createElement("input");
+    importUrlInput.type = "url";
+    importUrlInput.placeholder = "Paste a WhatsOnZwift or TrainerDay workout URL";
+    importUrlInput.className = "workout-import-input";
+
+    importSubmitBtn = document.createElement("button");
+    importSubmitBtn.type = "button";
+    importSubmitBtn.className = "picker-add-btn";
+    importSubmitBtn.textContent = "Import & Save";
+
+    form.appendChild(importUrlInput);
+    form.appendChild(importSubmitBtn);
+
+    importStatusEl = document.createElement("div");
+    importStatusEl.className = "workout-import-status";
+    importStatusEl.dataset.tone = "neutral";
+    importStatusEl.textContent = "Paste a workout URL to import it.";
+
+    const divider = document.createElement("div");
+    divider.className = "workout-import-divider";
+    divider.innerHTML = "<span>or</span>";
+
+    importScratchBtn = document.createElement("button");
+    importScratchBtn.type = "button";
+    importScratchBtn.className = "wb-code-insert-btn workout-import-scratch-btn";
+    importScratchBtn.textContent = "Build your own workout";
+
+    card.appendChild(intro);
+    card.appendChild(form);
+    card.appendChild(importStatusEl);
+    card.appendChild(divider);
+    card.appendChild(importScratchBtn);
+
+    importRoot.appendChild(card);
+  }
+
+  function setImportStatus(text, tone = "neutral") {
+    if (importStatusEl) {
+      importStatusEl.textContent = text;
+      importStatusEl.dataset.tone = tone;
+    }
+    updateBuilderStatus({text, tone});
+  }
+
+  function resetImportView() {
+    if (importUrlInput) importUrlInput.value = "";
+    isImportInProgress = false;
+    setImportStatus("Paste a workout URL to import it.", "neutral");
+  }
+
+  async function runImportFromUrl() {
+    if (!importUrlInput || isImportInProgress) return;
+    const url = (importUrlInput.value || "").trim();
+    if (!url) return;
+
+    isImportInProgress = true;
+    setImportStatus("Importing workout…", "neutral");
+
+    try {
+      const [canonical, errorMessage] = await importWorkoutFromUrl(url);
+
+      if (errorMessage || !canonical) {
+        const msg =
+          errorMessage ||
+          "Could not import this workout yet. Try another link.";
+        setImportStatus(msg, "error");
+        return;
+      }
+
+      canonical.sourceURL = canonical.sourceURL || url;
+      canonical.source = canonical.source || "Imported workout";
+      canonical.workoutTitle =
+        canonical.workoutTitle || "Imported workout";
+      canonical.description = canonical.description || "";
+
+      if (
+        !Array.isArray(canonical.rawSegments) ||
+        !canonical.rawSegments.length
+      ) {
+        setImportStatus(
+          "Imported workout looked empty. Try another link.",
+          "error"
+        );
+        return;
+      }
+
+      const saveResult = await saveCanonicalWorkoutToZwoDir(canonical);
+      if (!saveResult.ok) {
+        setImportStatus("Unable to save this workout to your library.", "error");
+        return;
+      }
+
+      setImportStatus("Saved to your library. Returning…", "ok");
+      await open(canonical.workoutTitle);
+    } catch (err) {
+      console.error("[WorkoutPicker] URL import failed:", err);
+      setImportStatus("Import failed. See console for details.", "error");
+    } finally {
+      isImportInProgress = false;
+    }
+  }
+
+  function enterImportMode() {
+    isImportMode = true;
+    isBuilderMode = false;
+
+    if (importRoot) importRoot.style.display = "block";
+    if (builderRoot) builderRoot.style.display = "none";
+    if (titleEl) titleEl.textContent = "Add workout";
 
     if (searchInput) searchInput.style.display = "none";
     if (zoneFilter) zoneFilter.style.display = "none";
     if (durationFilter) durationFilter.style.display = "none";
 
     if (addWorkoutBtn) addWorkoutBtn.style.display = "none";
-    if (builderClearBtn) builderClearBtn.style.display = "inline-flex";
+    if (builderSaveBtn) builderSaveBtn.style.display = "none";
+    if (builderBackBtn) builderBackBtn.style.display = "inline-flex";
+
+    modal.classList.add("workout-picker-modal--import");
+    modal.classList.remove("workout-picker-modal--builder");
+
+    resetImportView();
+  }
+
+  function exitImportMode() {
+    isImportMode = false;
+    if (importRoot) importRoot.style.display = "none";
+    modal.classList.remove("workout-picker-modal--import");
+
+    if (!isBuilderMode) {
+      if (titleEl) titleEl.textContent = "Workout library";
+      if (searchInput) searchInput.style.display = "";
+      if (zoneFilter) zoneFilter.style.display = "";
+      if (durationFilter) durationFilter.style.display = "";
+      if (addWorkoutBtn) addWorkoutBtn.style.display = "inline-flex";
+      if (builderBackBtn) builderBackBtn.style.display = "none";
+      if (builderSaveBtn) builderSaveBtn.style.display = "none";
+      resetHeaderStatus();
+    }
+  }
+
+
+  async function openWorkoutInBuilder(canonicalWorkout) {
+    if (!workoutBuilder) {
+      console.warn("[WorkoutPicker] Workout builder is not available.");
+      return;
+    }
+
+    const title =
+      (canonicalWorkout && canonicalWorkout.workoutTitle) || "Edit workout";
+    enterBuilderMode({title});
+
+    suppressBuilderDirty = true;
+    try {
+      workoutBuilder.loadCanonicalWorkout(canonicalWorkout);
+      workoutBuilder.refreshLayout();
+      setBuilderBaselineFromCurrent();
+    } catch (err) {
+      console.error(
+        "[WorkoutPicker] Failed to load workout into builder:",
+        err
+      );
+    } finally {
+      suppressBuilderDirty = false;
+    }
+  }
+
+  function enterBuilderMode(options = {}) {
+    const {title} = options;
+    isBuilderMode = true;
+    isImportMode = false;
+    if (importRoot) importRoot.style.display = "none";
+    if (builderRoot) builderRoot.style.display = "block";
+    if (titleEl) titleEl.textContent = title || "New Workout";
+
+    if (searchInput) searchInput.style.display = "none";
+    if (zoneFilter) zoneFilter.style.display = "none";
+    if (durationFilter) durationFilter.style.display = "none";
+
+    if (addWorkoutBtn) addWorkoutBtn.style.display = "none";
     if (builderSaveBtn) builderSaveBtn.style.display = "inline-flex";
     if (builderBackBtn) builderBackBtn.style.display = "inline-flex";
 
     modal.classList.add("workout-picker-modal--builder");
+    modal.classList.remove("workout-picker-modal--import");
 
     if (emptyStateEl) emptyStateEl.style.display = "none";
+    updateBuilderStatus({
+      text: builderStatusEl ? builderStatusEl.textContent : "",
+      tone: builderStatusEl?.dataset?.tone || "neutral",
+    });
 
     if (workoutBuilder) {
       requestAnimationFrame(() => {
@@ -677,41 +995,31 @@ function createWorkoutPicker(config) {
 
   function exitBuilderMode() {
     isBuilderMode = false;
+    hasUnsavedBuilderChanges = false;
+    builderBaseline = null;
     if (builderRoot) builderRoot.style.display = "none";
-    if (titleEl) titleEl.textContent = "Workout library";
-
-    if (searchInput) searchInput.style.display = "";
-    if (zoneFilter) zoneFilter.style.display = "";
-    if (durationFilter) durationFilter.style.display = "";
-
-    if (addWorkoutBtn) addWorkoutBtn.style.display = "inline-flex";
-    if (builderClearBtn) builderClearBtn.style.display = "none";
-    if (builderSaveBtn) builderSaveBtn.style.display = "none";
-    if (builderBackBtn) builderBackBtn.style.display = "none";
-
     modal.classList.remove("workout-picker-modal--builder");
+
+    if (!isImportMode) {
+      if (titleEl) titleEl.textContent = "Workout library";
+      if (searchInput) searchInput.style.display = "";
+      if (zoneFilter) zoneFilter.style.display = "";
+      if (durationFilter) durationFilter.style.display = "";
+      if (addWorkoutBtn) addWorkoutBtn.style.display = "inline-flex";
+      if (builderSaveBtn) builderSaveBtn.style.display = "none";
+      if (builderBackBtn) builderBackBtn.style.display = "none";
+      resetHeaderStatus();
+    }
   }
 
-  function clearBuilder() {
+  function startBuilderFromScratch() {
     if (!workoutBuilder) return;
-
-    /** @type {CanonicalWorkout} */
-    const cw = workoutBuilder.getState();
-
-    const hasContent =
-      (cw.workoutTitle && cw.workoutTitle.trim()) ||
-      (cw.source && cw.source.trim()) ||
-      (cw.description && cw.description.trim()) ||
-      (Array.isArray(cw.rawSegments) && cw.rawSegments.length > 0);
-
-    if (!hasContent) return;
-
-    const ok = window.confirm(
-      "Clear the builder? Unsaved edits will be lost."
-    );
-    if (!ok) return;
-
+    enterBuilderMode({title: "New Workout"});
+    suppressBuilderDirty = true;
     workoutBuilder.clearState();
+    workoutBuilder.refreshLayout();
+    suppressBuilderDirty = false;
+    setBuilderBaselineFromCurrent();
   }
 
   function movePickerExpansion(delta) {
@@ -730,6 +1038,18 @@ function createWorkoutPicker(config) {
 
     pickerExpandedTitle = shownItems[idx].canonical.workoutTitle;
     renderWorkoutPickerTable();
+  }
+
+  async function handleBackToLibrary() {
+    if (isBuilderMode) {
+      const ok = await maybeHandleUnsavedBeforeLeave({
+        reopenAfterSave: true,
+      });
+      if (!ok) return;
+    }
+
+    exitBuilderMode();
+    exitImportMode();
   }
 
   // --------------------------- sorting / hotkeys wiring ---------------------------
@@ -757,6 +1077,7 @@ function createWorkoutPicker(config) {
   function setupHotkeys() {
     document.addEventListener("keydown", (e) => {
       if (!isPickerOpen) return;
+      if (isBuilderMode || isImportMode) return;
 
       const tag = e.target?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
@@ -953,19 +1274,21 @@ function createWorkoutPicker(config) {
     await rescanWorkouts(dirHandle);
   }
 
-  async function saveCurrentBuilderWorkoutToZwoDir() {
+  async function saveCurrentBuilderWorkoutToZwoDir(options = {}) {
+    const {reopenAfterSave = true} = options;
+
     if (!workoutBuilder) {
       alert(
         "Workout builder is not available. See logs for details."
       );
-      return;
+      return {ok: false};
     }
 
     try {
       const validation = workoutBuilder.validateForSave();
       if (!validation.ok) {
         // validateForSave is assumed to show its own messages
-        return;
+        return {ok: false};
       }
 
       /** @type {CanonicalWorkout} */
@@ -977,18 +1300,24 @@ function createWorkoutPicker(config) {
         !canonical.rawSegments.length
       ) {
         alert("This workout has no intervals to save.");
-        return;
+        return {ok: false};
       }
 
       const result = await saveCanonicalWorkoutToZwoDir(canonical);
       if (!result.ok) {
         // Helper already alerted the user.
-        return;
+        return {ok: false};
       }
 
-      // Success → clean up + refresh UI
-      workoutBuilder.clearState();
-      open(canonical.workoutTitle);
+      hasUnsavedBuilderChanges = false;
+      builderBaseline = cloneCanonicalWorkout(canonical);
+
+      if (reopenAfterSave) {
+        workoutBuilder.clearState();
+        open(canonical.workoutTitle);
+      }
+
+      return {ok: true, canonical};
     } catch (err) {
       console.error(
         "[WorkoutPicker] Save to ZWO dir failed:",
@@ -998,6 +1327,7 @@ function createWorkoutPicker(config) {
         "Unexpected failure while saving workout.\n\n" +
         "See logs for details."
       );
+      return {ok: false};
     }
   }
 
@@ -1087,6 +1417,25 @@ function createWorkoutPicker(config) {
     return {ok: true, fileName, dirHandle};
   }
 
+  async function maybeHandleUnsavedBeforeLeave(opts = {}) {
+    const {reopenAfterSave = true} = opts;
+    if (!isBuilderMode || !hasUnsavedBuilderChanges) return true;
+
+    const wantsSave = window.confirm(
+      "You have unsaved changes. Save them before leaving?\n\n" +
+      "OK = Save changes and leave\nCancel = Leave without saving"
+    );
+
+    if (!wantsSave) {
+      return true;
+    }
+
+    const result = await saveCurrentBuilderWorkoutToZwoDir({
+      reopenAfterSave,
+    });
+    return !!(result && result.ok);
+  }
+
   // --------------------------- public API ---------------------------
 
   /**
@@ -1098,6 +1447,7 @@ function createWorkoutPicker(config) {
    *                                 with the current picker controls.
    */
   async function open(workoutTitle) {
+    exitImportMode();
     exitBuilderMode();
 
     const handle = await loadZwoDirHandle();
@@ -1136,7 +1486,17 @@ function createWorkoutPicker(config) {
     }
   }
 
-  function close() {
+  async function close() {
+    if (isBuilderMode) {
+      const ok = await maybeHandleUnsavedBeforeLeave({
+        reopenAfterSave: false,
+      });
+      if (!ok) return;
+    }
+
+    exitBuilderMode();
+    exitImportMode();
+
     isPickerOpen = false;
     if (overlay) overlay.style.display = "none";
   }
@@ -1150,20 +1510,22 @@ function createWorkoutPicker(config) {
   // --------------------------- initial DOM wiring ---------------------------
 
   if (closeBtn) {
-    closeBtn.addEventListener("click", () => close());
+    closeBtn.addEventListener("click", async () => {
+      await close();
+    });
   }
 
   if (addWorkoutBtn) {
     addWorkoutBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      enterBuilderMode();
+      enterImportMode();
     });
   }
 
   if (builderBackBtn) {
-    builderBackBtn.addEventListener("click", (e) => {
+    builderBackBtn.addEventListener("click", async (e) => {
       e.preventDefault();
-      exitBuilderMode();
+      await handleBackToLibrary();
     });
   }
 
@@ -1174,17 +1536,33 @@ function createWorkoutPicker(config) {
     });
   }
 
-  if (builderClearBtn) {
-    builderClearBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      clearBuilder();
-    });
-  }
-
   if (emptyAddBtn) {
     emptyAddBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      enterBuilderMode();
+      enterImportMode();
+    });
+  }
+
+  if (importSubmitBtn) {
+    importSubmitBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await runImportFromUrl();
+    });
+  }
+
+  if (importUrlInput) {
+    importUrlInput.addEventListener("keydown", async (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        await runImportFromUrl();
+      }
+    });
+  }
+
+  if (importScratchBtn) {
+    importScratchBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      startBuilderFromScratch();
     });
   }
 
