@@ -419,9 +419,6 @@
       <header class="settings-header">
         <div class="settings-header-main">
           <div id="settingsTitle" class="settings-title">Settings</div>
-          <div id="settingsSubtitle" class="settings-subtitle">
-            Configure folders, FTP, sound, logs, and environment checks.
-          </div>
         </div>
 
         <div class="settings-header-actions">
@@ -443,32 +440,26 @@
       </header>
 
 
-      <div id="settingsAttentionBanner" class="settings-attention-banner"></div>
-
       <div class="settings-body">
         <!-- Main settings view -->
         <div id="settingsMainView" class="settings-main-view">
-          <!-- Folders -->
-          <section class="settings-section">
-            <div class="settings-section-title">
-              Workout &amp; history folders
-              <button class="settings-help-toggle-btn" type="button" data-settings-help-toggle="settingsFoldersHelp">
-                What is this?
-              </button>
-            </div>
-
+          <div class="settings-list">
             <div class="settings-row">
               <div class="settings-row-main">
                 <div class="settings-icon">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <!-- generic folder icon -->
                     <path d="M4 5h6l2 2h8v12H4z" />
                   </svg>
                 </div>
                 <div class="settings-row-text">
-                  <div class="settings-row-label">VeloDrive folder</div>
+                  <div class="settings-row-label">
+                    VeloDrive folder
+                    <button class="settings-help-toggle-btn" type="button" data-settings-help-toggle="settingsFoldersHelp">
+                      Help
+                    </button>
+                  </div>
                   <div class="settings-row-description">
-                    All workouts, history, and trash live under this folder.
+                    Workouts, history, and trash live in one folder you pick.
                   </div>
                 </div>
               </div>
@@ -483,49 +474,33 @@
             </div>
 
             <div id="settingsFoldersHelp" class="settings-help-content" hidden>
-              VeloDrive will store all of your data on your local filesystem:
-
-              You only need to the create the top-level folder, such as <code>~/Dropbox/velodrive</code>.
-
-              Inside the folder you choose, VeloDrive automatically creates:
-              <pre>
-  ~/Dropbox/velodrive/
-  ├── workouts/   ← your .zwo workout files
-  ├── history/    ← completed workout .fit files
-  └── trash/      ← deleted workouts</pre>
+              Choose a single folder (for example <code>~/VeloDrive</code>). We create <code>workouts</code>,
+              <code>history</code>, and <code>trash</code> inside it for you.
             </div>
-
-
-          </section>
-
-          <!-- FTP & sound -->
-          <section class="settings-section">
-            <div class="settings-section-title">Workout behaviour</div>
 
             <div class="settings-row">
               <div class="settings-row-main">
                 <div class="settings-icon">
-                  <!-- power / FTP icon -->
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M11 21L5 13h4V3l8 8h-4v10z" />
                   </svg>
                 </div>
                 <div class="settings-row-text">
                   <div class="settings-row-label">
-                    Functional Threshold Power (FTP)
+                    FTP
                     <button class="settings-help-toggle-btn" type="button" data-settings-help-toggle="settingsFtpHelp">
-                      Learn more
+                      What’s this?
                     </button>
+                  </div>
+                  <div class="settings-row-description">
+                    Tweak difficulty if workouts feel too easy or hard.
                   </div>
                 </div>
               </div>
-
-              <!-- RIGHT SIDE: FTP box that looks like manualControls -->
               <div class="settings-row-right">
                 <div id="settingsFtpControls" class="control-group">
                   <button class="control-btn" type="button" data-ftp-delta="-10">-</button>
                   <div class="control-value">
-                    <!-- Input is styled so it visually mimics the manualValue span -->
                     <input id="settingsFtpInput" class="settings-ftp-input" type="number" min="50" max="500" step="1"
                       inputmode="numeric" />
                     <span class="settings-ftp-unit">W</span>
@@ -536,9 +511,8 @@
             </div>
 
             <div id="settingsFtpHelp" class="settings-help-content" hidden>
-              FTP controls the workout difficulty. If you don’t know your
-              actual FTP, you can estimate it by multiplying your weight in
-              kilograms by 3.
+              FTP is the power you can hold for about an hour. If you do not know it, multiply your weight in kg by 3
+              for a quick starting point.
             </div>
 
             <div class="settings-row" id="settingsSoundToggle">
@@ -551,11 +525,14 @@
                 </div>
                 <div class="settings-row-text">
                   <div class="settings-row-label">
-                    Interval sounds
+                    Sounds
                     <button class="settings-help-toggle-btn" type="button"
                       data-settings-help-toggle="settingsSoundHelp">
                       What will I hear?
                     </button>
+                  </div>
+                  <div class="settings-row-description">
+                    Interval beeps and the start countdown.
                   </div>
                 </div>
               </div>
@@ -568,23 +545,8 @@
             </div>
 
             <div id="settingsSoundHelp" class="settings-help-content" hidden>
-              When sounds are enabled:
-              <ul>
-                <li>Short beep pattern a few seconds before a big interval change.</li>
-                <li>More dramatic sound before very hard efforts.</li>
-                <li>Countdown &amp; overlay when starting a workout.</li>
-              </ul>
-              This helps you prepare for intensity changes without staring at the screen.
-            </div>
-          </section>
-
-          <!-- Environment / browser / BT -->
-          <section class="settings-section">
-            <div class="settings-section-title">
-              Environment checks
-              <button class="settings-help-toggle-btn" type="button" data-settings-help-toggle="settingsEnvHelp">
-                Why is this important?
-              </button>
+              A short beep before interval changes, a stronger cue before big efforts, and a quick countdown when you
+              hit start.
             </div>
 
             <div class="settings-row">
@@ -596,7 +558,13 @@
                   </svg>
                 </div>
                 <div class="settings-row-text">
-                  <div class="settings-row-label">Web Bluetooth</div>
+                  <div class="settings-row-label">
+                    Browser check
+                    <button class="settings-help-toggle-btn" type="button" data-settings-help-toggle="settingsEnvHelp">
+                      Details
+                    </button>
+                  </div>
+                  <div class="settings-row-description">Web Bluetooth support for trainer and HR pairing.</div>
                 </div>
               </div>
               <div class="settings-row-right">
@@ -605,25 +573,10 @@
             </div>
 
             <div id="settingsEnvHelp" class="settings-help-content" hidden>
-              Web Bluetooth lets VeloDrive connect directly to your trainer and heart-rate monitor from the browser.
-              It is supported only in Google Chrome on Linux, Windows, macOS, and Android.
-              iOS browsers, Firefox, and some Chromium-based browsers (for example Vivaldi) do not support Web
-              Bluetooth.
-              <br /><br />
-              If Chrome doesn't detect your devices, you may need to enable its Web Bluetooth flags:
-              <br /><br />
-              In Chrome on desktop, open a new tab and go to:
-              <ul style="margin:2px 0 0 16px; padding-left:0;">
-                <li><code>chrome://flags/#enable-web-bluetooth</code></li>
-                <li><code>chrome://flags/#enable-web-bluetooth-new-permissions-backend</code></li>
-              </ul>
-              <br />
-              Set both to <strong>Enabled</strong>, restart Chrome, then reload VeloDrive.
+              Web Bluetooth works best in Chrome on desktop and Android. If devices will not show up, enable Chrome’s
+              Web Bluetooth flags, restart the browser, and try again.
             </div>
-          </section>
 
-          <!-- Logs entry point -->
-          <section class="settings-section">
             <div class="settings-row">
               <div class="settings-row-main">
                 <div class="settings-icon">
@@ -635,6 +588,7 @@
                   <div class="settings-row-label">
                     Connection logs
                   </div>
+                  <div class="settings-row-description">Live Bluetooth and device messages.</div>
                 </div>
               </div>
               <div class="settings-row-right">
@@ -643,7 +597,7 @@
                 </button>
               </div>
             </div>
-          </section>
+          </div>
         </div>
 
         <!-- Logs view -->

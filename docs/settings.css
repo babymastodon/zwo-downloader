@@ -15,11 +15,11 @@
   height: min(900px, 80vh);
   background: var(--surface-elevated);
   border-radius: var(--radius);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-subtle);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
-  padding: 10px 12px;
+  padding: 12px 14px;
   color: var(--text-main);
   font-size: 14px;
 }
@@ -29,7 +29,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   flex-wrap: wrap;
 }
 
@@ -49,11 +49,6 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  font-size: 14px;
-  color: var(--text-muted);
-}
-
-.settings-subtitle {
   font-size: 14px;
   color: var(--text-muted);
 }
@@ -92,32 +87,12 @@
   }
 }
 
-.settings-attention-banner {
-  display: none;
-  margin-bottom: 8px;
-  padding: 6px 8px;
-  border-radius: var(--radius);
-  background: rgba(245, 166, 35, 0.12);
-  border: 1px solid rgba(245, 166, 35, 0.5);
-  color: #b26a00;
-  font-size: 14px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .settings-attention-banner {
-    background: rgba(255, 183, 77, 0.1);
-    border-color: rgba(255, 183, 77, 0.5);
-    color: #ffb74d;
-  }
-}
-
 .settings-body {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  /* you can keep overflow: hidden here so only the inner view scrolls */
+  gap: 10px;
   overflow: hidden;
 }
 
@@ -127,11 +102,9 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   overflow-y: auto;
-  /* <— key line */
   padding-right: 4px;
-  /* optional, for scrollbar */
 }
 
 /* Same idea for logs if you want that view scrollable too */
@@ -145,21 +118,10 @@
   display: none;
 }
 
-.settings-section {
-  border-radius: var(--radius);
-  border: 1px solid var(--border-subtle);
-  padding: 8px 10px;
+.settings-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-
-.settings-section-title {
-  font-weight: 500;
-  font-size: 14px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
+  gap: 10px;
 }
 
 .settings-row {
@@ -168,19 +130,27 @@
   justify-content: space-between;
   gap: 8px;
   flex-wrap: nowrap;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: inset 0 -1px 0 var(--border-subtle);
+}
+
+.settings-list .settings-row:last-of-type {
+  box-shadow: none;
 }
 
 .settings-row-main {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   min-width: 0;
   flex: 1;
 }
 
 .settings-icon {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius);
   background: var(--accent-soft);
   display: flex;
@@ -191,8 +161,8 @@
 }
 
 .settings-icon svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   display: block;
   fill: none;
   stroke: currentColor;
@@ -209,7 +179,13 @@
 .settings-row-label {
   font-size: 14px;
   font-weight: 500;
-  white-space: nowrap;
+  white-space: normal;
+}
+
+.settings-row-description {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.4;
 }
 
 .settings-row-status {
@@ -241,8 +217,8 @@
   padding: 0 10px;
   font-size: 14px;
   border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-elevated);
   color: var(--text-main);
   display: inline-flex;
   align-items: center;
@@ -408,9 +384,9 @@
   color: var(--text-main);
   margin-top: 6px;
   padding: 8px 10px;
-  border-left: 3px solid var(--border);
   border-radius: var(--radius);
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
   animation: none;
 }
 

@@ -32,7 +32,6 @@ const settingsModal = document.getElementById("settingsModal");
 const settingsCloseBtn = document.getElementById("settingsCloseBtn");
 const settingsOpenBtn = document.getElementById("settingsBtn");
 const settingsTitleEl = document.getElementById("settingsTitle");
-const settingsSubtitleEl = document.getElementById("settingsSubtitle");
 
 // Views inside modal
 const settingsMainView = document.getElementById("settingsMainView");
@@ -40,9 +39,6 @@ const settingsLogsView = document.getElementById("settingsLogsView");
 const settingsOpenLogsBtn = document.getElementById("settingsOpenLogsBtn");
 const settingsBackFromLogsBtn = document.getElementById("settingsBackFromLogsBtn");
 const settingsLogsContent = document.getElementById("settingsLogsContent");
-
-// Attention banner (for startup guidance)
-const settingsAttentionBanner = document.getElementById("settingsAttentionBanner");
 
 // Root directory (single picker)
 const rootDirStatusEl = document.getElementById("rootDirStatus");
@@ -67,11 +63,8 @@ const helpToggleButtons = Array.from(
 );
 
 const SETTINGS_TITLE_TEXT = "Settings";
-const SETTINGS_SUBTITLE_TEXT =
-  "Configure folders, FTP, sound, logs, and environment checks.";
 
 const LOGS_TITLE_TEXT = "Connection logs";
-const LOGS_SUBTITLE_TEXT = "Real-time connection and Bluetooth logs.";
 
 // --------------------------- Local state ---------------------------
 
@@ -83,9 +76,6 @@ let startupNeedsAttention = {
   missingRootDir: false,
   missingBtSupport: false,
 };
-
-// If true, the user isn't allowed to dismiss the Settings modal
-let hasBlockingSettingsIssues = false;
 
 // --------------------------- Utility helpers ---------------------------
 
@@ -109,15 +99,7 @@ function actuallyCloseSettings() {
   showMainView();
 }
 
-function canDismissSettings() {
-  if (!hasBlockingSettingsIssues) return true;
-
-  alert("Please fix the highlighted settings before closing the Settings window.");
-  return false;
-}
-
 function closeSettings() {
-  if (!canDismissSettings()) return;
   actuallyCloseSettings();
 }
 
@@ -129,9 +111,6 @@ function showMainView() {
 
   if (settingsTitleEl) {
     settingsTitleEl.textContent = SETTINGS_TITLE_TEXT;
-  }
-  if (settingsSubtitleEl) {
-    settingsSubtitleEl.textContent = SETTINGS_SUBTITLE_TEXT;
   }
 
   if (settingsBackFromLogsBtn) {
@@ -147,9 +126,6 @@ function showLogsView() {
 
   if (settingsTitleEl) {
     settingsTitleEl.textContent = LOGS_TITLE_TEXT;
-  }
-  if (settingsSubtitleEl) {
-    settingsSubtitleEl.textContent = LOGS_SUBTITLE_TEXT;
   }
 
   if (settingsBackFromLogsBtn) {
@@ -225,7 +201,6 @@ async function handleChooseRootDir() {
     const handle = await pickRootDir();
     if (!handle) return;
     await refreshDirectoryStatuses();
-    updateAttentionBanner();
   } catch (err) {
     console.error("[Settings] Failed to choose VeloDrive folder:", err);
     alert("Failed to choose VeloDrive folder.");
@@ -323,43 +298,13 @@ function refreshEnvironmentStatus() {
 
   if (btStatusText) {
     btStatusText.textContent = hasBt
-      ? "Web Bluetooth API detected in this browser."
-      : "Web Bluetooth API not detected.";
+      ? "Web Bluetooth available in this browser."
+      : "Web Bluetooth not detected.";
     btStatusText.classList.toggle("settings-status-ok", hasBt);
     btStatusText.classList.toggle("settings-status-missing", !hasBt);
   }
 
   startupNeedsAttention.missingBtSupport = !hasBt;
-}
-
-// --------------------------- Attention banner ---------------------------
-
-function updateAttentionBanner() {
-  if (!settingsAttentionBanner) return;
-
-  const issues = [];
-
-  if (startupNeedsAttention.missingRootDir) {
-    issues.push("Choose a VeloDrive folder for your workouts and history.");
-  }
-  if (startupNeedsAttention.missingBtSupport) {
-    issues.push("Use a supported browser with Web Bluetooth (Chrome on desktop/Android).");
-  }
-
-  // Any of these issues are now considered blocking, including Bluetooth.
-  hasBlockingSettingsIssues =
-    startupNeedsAttention.missingRootDir ||
-    startupNeedsAttention.missingBtSupport;
-
-  if (!issues.length) {
-    settingsAttentionBanner.style.display = "none";
-    settingsAttentionBanner.textContent = "";
-    return;
-  }
-
-  settingsAttentionBanner.style.display = "block";
-  settingsAttentionBanner.textContent =
-    "Before you start: " + issues.join(" ");
 }
 
 // --------------------------- Help / user-guide toggles ---------------------------
@@ -413,8 +358,6 @@ function initHelpToggles() {
 function wireSettingsEvents() {
   if (settingsOpenBtn) {
     settingsOpenBtn.addEventListener("click", () => {
-      // Don't reset error flags; they reflect real config state.
-      updateAttentionBanner();
       openSettings();
     });
   }
@@ -515,7 +458,6 @@ export async function initSettings() {
 
   refreshFtpFromEngine();
   refreshEnvironmentStatus();
-  updateAttentionBanner();
 
   const shouldShowFileHelp = startupNeedsAttention.missingRootDir;
   const shouldShowBtHelp = startupNeedsAttention.missingBtSupport;
