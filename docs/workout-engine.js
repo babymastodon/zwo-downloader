@@ -46,6 +46,7 @@ function createWorkoutEngine() {
 
   let zeroPowerSeconds = 0;
   let autoPauseDisabledUntilSec = 0;
+  let manualPauseAutoResumeBlockedUntilMs = 0;
 
   let liveSamples = [];
   let workoutTicker = null;
@@ -167,6 +168,7 @@ function createWorkoutEngine() {
       liveSamples,
       zeroPowerSeconds,
       autoPauseDisabledUntilSec,
+      manualPauseAutoResumeBlockedUntilMs,
       workoutStartedAt: workoutStartedAt ? workoutStartedAt.toISOString() : null,
     });
   }
@@ -318,8 +320,11 @@ function createWorkoutEngine() {
       }
 
       if (mode === "workout" && workoutRunning && workoutPaused) {
+        const now = Date.now();
+        const autoResumeBlocked = now < manualPauseAutoResumeBlockedUntilMs;
+
         const currentTarget = getCurrentTargetPower();
-        if (currentTarget && lastSamplePower) {
+        if (!autoResumeBlocked && currentTarget && lastSamplePower) {
           if (lastSamplePower >= 0.9 * currentTarget) {
             log("Auto-resume: power high vs target (>=90%).");
             autoPauseDisabledUntilSec = elapsedSec + 15;
@@ -382,6 +387,7 @@ function createWorkoutEngine() {
         workoutStartedAt = new Date();
         zeroPowerSeconds = 0;
         autoPauseDisabledUntilSec = 15;
+        manualPauseAutoResumeBlockedUntilMs = 0;
 
         workoutStarting = false;
         setRunning(true);
@@ -396,10 +402,12 @@ function createWorkoutEngine() {
     if (workoutPaused) {
       log("Manual resume requested.");
       autoPauseDisabledUntilSec = elapsedSec + 15;
+      manualPauseAutoResumeBlockedUntilMs = 0;
       Beeper.showResumedOverlay();
       setPaused(false);
     } else {
       log("Manual pause requested.");
+      manualPauseAutoResumeBlockedUntilMs = Date.now() + 10_000;
       Beeper.showPausedOverlay();
       setPaused(true);
     }
@@ -423,6 +431,7 @@ function createWorkoutEngine() {
     liveSamples = [];
     zeroPowerSeconds = 0;
     autoPauseDisabledUntilSec = 0;
+    manualPauseAutoResumeBlockedUntilMs = 0;
     stopTicker();
     clearActiveState();
     emitStateChanged();
@@ -505,6 +514,8 @@ function createWorkoutEngine() {
       liveSamples = active.liveSamples || [];
       zeroPowerSeconds = active.zeroPowerSeconds || 0;
       autoPauseDisabledUntilSec = active.autoPauseDisabledUntilSec || 0;
+      manualPauseAutoResumeBlockedUntilMs =
+        active.manualPauseAutoResumeBlockedUntilMs || 0;
       workoutStartedAt = active.workoutStartedAt
         ? new Date(active.workoutStartedAt)
         : null;
@@ -582,6 +593,7 @@ function createWorkoutEngine() {
       liveSamples = [];
       zeroPowerSeconds = 0;
       autoPauseDisabledUntilSec = 0;
+      manualPauseAutoResumeBlockedUntilMs = 0;
 
       recomputeWorkoutTotalSec();
 
@@ -596,4 +608,3 @@ function createWorkoutEngine() {
     endWorkout,
   };
 }
-
