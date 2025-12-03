@@ -19,7 +19,8 @@
   --cad-line: #2d8201;
   --time-scrub: #ffff00;
   --shade-bg: #000000;
-  --radius: 6px;
+  --radius: 8px;
+  --modal-radius: calc(var(--radius) * 2);
   --nav-control-height: 32px;
   --button-padding-x: 12px;
   --font-size-base: 16px;

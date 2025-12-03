@@ -14,7 +14,7 @@
   width: min(1600px, 85vw);
   height: min(1200px, 85vh);
   background: var(--surface-elevated);
-  border-radius: var(--radius);
+  border-radius: var(--modal-radius);
   border: 1px solid var(--border);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   display: flex;
