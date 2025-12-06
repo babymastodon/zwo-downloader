@@ -917,7 +917,7 @@ async function initPage() {
 
   if (workoutNameLabel) {
     workoutNameLabel.dataset.clickable = "true";
-    workoutNameLabel.title = "Click to choose a workout.";
+    workoutNameLabel.title = "Select a workout (W)";
     workoutNameLabel.addEventListener("click", async () => {
       const vm = engine.getViewModel();
       if (vm.workoutRunning) {
@@ -927,6 +927,9 @@ async function initPage() {
       const name = vm.canonicalWorkout?.workoutTitle;
       await openPickerWithGuard(name);
     });
+  }
+  if (workoutTitleCenter) {
+    workoutTitleCenter.title = "Select a workout (W)";
   }
 
   if (bikeConnectBtn) {
@@ -1059,6 +1062,7 @@ async function initPage() {
         e.preventDefault();
         if (vm.mode !== "workout") {
           engine.setMode("workout");
+          return;
         }
         if (!hasActiveWorkout) {
           const name = vm.canonicalWorkout?.workoutTitle;
