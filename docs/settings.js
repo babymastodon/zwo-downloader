@@ -70,6 +70,7 @@ const LOGS_TITLE_TEXT = "Connection logs";
 
 let settingsInitialised = false;
 let engine = null;
+let settingsIsOpen = false;
 
 // Track whether we auto-opened because of some issue
 let startupNeedsAttention = {
@@ -90,11 +91,13 @@ function isWebBluetoothAvailable() {
 function openSettings() {
   if (!settingsOverlay || !settingsModal) return;
   settingsOverlay.style.display = "flex";
+  settingsIsOpen = true;
 }
 
 function actuallyCloseSettings() {
   if (!settingsOverlay) return;
   settingsOverlay.style.display = "none";
+  settingsIsOpen = false;
   // When closing, show main view again
   showMainView();
 }
@@ -485,4 +488,8 @@ export async function initSettings() {
 // Allow other modules to open settings on demand
 export function openSettingsModal() {
   openSettings();
+}
+
+export function isSettingsModalOpen() {
+  return settingsIsOpen;
 }

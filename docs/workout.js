@@ -31,6 +31,7 @@ import {
   setWelcomeSeen,
   loadRootDirHandle,
 } from "./storage.js";
+import {isSettingsModalOpen} from "./settings.js";
 
 // --------------------------- DOM refs ---------------------------
 
@@ -165,6 +166,15 @@ function primeAudioContext() {
   const once = () => warm();
   window.addEventListener("pointerdown", once, {once: true});
   window.addEventListener("keydown", once, {once: true});
+}
+
+function isAnyModalOpen() {
+  const pickerOpen =
+    picker && typeof picker.isOpen === "function" ? picker.isOpen() : false;
+  const settingsOpen = typeof isSettingsModalOpen === "function"
+    ? isSettingsModalOpen()
+    : false;
+  return pickerOpen || settingsOpen;
 }
 
 function formatTimeMMSS(sec) {
@@ -1028,6 +1038,10 @@ async function initPage() {
     if (isWelcomeActive) return;
     const tag = e.target && e.target.tagName;
     const vm = engine.getViewModel();
+    const hasActiveWorkout =
+      vm.workoutRunning || vm.workoutPaused || vm.workoutStarting;
+    const key = (e.key || "").toLowerCase();
+    const modalOpen = isAnyModalOpen();
 
     if (e.code === "Space") {
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
@@ -1038,6 +1052,34 @@ async function initPage() {
       e.preventDefault();
       engine.startWorkout();
       return;
+    }
+
+    if (!modalOpen && tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+      if (key === "w") {
+        e.preventDefault();
+        if (vm.mode !== "workout") {
+          engine.setMode("workout");
+        }
+        if (!hasActiveWorkout) {
+          const name = vm.canonicalWorkout?.workoutTitle;
+          openPickerWithGuard(name);
+        }
+        return;
+      }
+
+      if (key === "e") {
+        if (hasActiveWorkout) return;
+        e.preventDefault();
+        engine.setMode("erg");
+        return;
+      }
+
+      if (key === "r") {
+        if (hasActiveWorkout) return;
+        e.preventDefault();
+        engine.setMode("resistance");
+        return;
+      }
     }
 
     if (e.key === "Escape") {

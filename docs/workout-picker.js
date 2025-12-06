@@ -1588,5 +1588,6 @@ function createWorkoutPicker(config) {
     close,
     syncFtpChanged,
     saveCanonicalWorkoutToZwoDir,
+    isOpen: () => isPickerOpen,
   };
 }
