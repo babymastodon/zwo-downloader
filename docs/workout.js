@@ -1058,6 +1058,18 @@ async function initPage() {
     }
 
     if (!modalOpen && tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+      const manualMode = vm.mode === "erg" || vm.mode === "resistance";
+      if (manualMode && (key === "arrowup" || key === "k" || key === "arrowdown" || key === "j")) {
+        const delta = key === "arrowup" || key === "k" ? 10 : -10;
+        e.preventDefault();
+        if (vm.mode === "erg") {
+          engine.adjustManualErg(delta);
+        } else {
+          engine.adjustManualResistance(delta);
+        }
+        return;
+      }
+
       if (key === "w") {
         e.preventDefault();
         if (vm.mode !== "workout") {
